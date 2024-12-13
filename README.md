@@ -19,7 +19,7 @@ Each dataset is expected to be in shape of the number of skewers and line-of-sig
 
 10 attributes are also expected:
 
-1. ``Lbox`` - length of simulated box in units of $\textrm{kpc}$
+1. ``Lbox`` - array of 3 floats, detailing length of simulated box in each dimension in units of $\textrm{kpc}$
 2. ``Omega_R`` - Present-Day Radiation Energy Density
 3. ``Omega_M`` - Present-Day Matter Energy Density
 4. ``Omega_L`` - Present-Day Dark Energy Density
