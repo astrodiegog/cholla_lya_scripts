@@ -411,7 +411,7 @@ class ChollaSkewerCosmoCalculator:
             n_los (int): number of cells along line-of-sight
             dx (float): comoving distance between cells (kpc)
             dtype (np type): (optional) numpy precision to initialize output arrays
-        
+
         Objects including ghost cells are suffixed with _ghost
 
     Values are returned in code units unless otherwise specified.
@@ -443,7 +443,6 @@ class ChollaSkewerCosmoCalculator:
         self.vHubbleL_ghost_cgs = np.arange(-self.n_ghost, self.n_ghost + self.n_los) * self.dvHubble_cgs
         self.vHubbleR_ghost_cgs = self.vHubbleL_ghost_cgs + self.dvHubble_cgs
         self.vHubbleC_ghost_cgs = self.vHubbleL_ghost_cgs + 0.5 * self.dvHubble_cgs
-
 
     def extend_ghostcells(self, arr):
         '''
@@ -755,21 +754,24 @@ class ChollaOnTheFlySkewers:
 
         # set grid information (ncells, dist between cells, nstride)
         self.set_gridinfo()
+        dx_Mpc = self.dx / 1.e3 # [Mpc]
+        dy_Mpc = self.dy / 1.e3
+        dz_Mpc = self.dz / 1.e3
 
         # set cosmology params
         self.set_cosmoinfo()
 
         # grab current hubble param & info needed to calculate hubble flow
-        H = self.get_currH()
+        H = self.get_currH()  # [km s-1 Mpc-1]
         cosmoh = self.H0 / 100.
 
         # calculate proper distance along each direction
-        dxproper = self.dx * self.current_a / cosmoh
-        dyproper = self.dy * self.current_a / cosmoh
-        dzproper = self.dz * self.current_a / cosmoh
+        dxproper = dx_Mpc * self.current_a / cosmoh # [h-1 Mpc]
+        dyproper = dy_Mpc * self.current_a / cosmoh
+        dzproper = dz_Mpc * self.current_a / cosmoh
 
-        # calculate hubble flow through a cell along each axis
-        self.dvHubble_x = H * dxproper
+        # calculate Hubble flow through a cell along each axis
+        self.dvHubble_x = H * dxproper # [km s-1]
         self.dvHubble_y = H * dyproper
         self.dvHubble_z = H * dzproper
 
@@ -808,10 +810,6 @@ class ChollaOnTheFlySkewers:
         self.dy = Ly / self.ny
         self.dz = Lz / self.nz
 
-        # convert kpc --> Mpc
-        self.dx /= 1.e3
-        self.dy /= 1.e3
-        self.dz /= 1.e3
 
     def set_cosmoinfo(self):
         '''
@@ -1092,7 +1090,7 @@ def main():
                                       OTFSkewers.Omega_K, OTFSkewers.Omega_L,
                                       OTFSkewers.w0, OTFSkewers.wa, OTFSkewers.H0)
     snapHead = ChollaSnapHead(nSkewerOutput + 1, OTFSkewers.current_a) # snapshots are index-1
-        
+       
     OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(), OTFSkewers.get_skewersy_obj(),
                       OTFSkewers.get_skewersz_obj()]
 
