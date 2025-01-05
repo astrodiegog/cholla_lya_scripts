@@ -2,10 +2,13 @@ import argparse
 import os
 
 import numpy as np
-from scipy.special import erf
 import h5py
+import matplotlib.pyplot as plt
 
 
+
+plt.style.use("dstyle")
+_ = plt.figure()
 
 ###
 # Create command line arg parser
@@ -23,26 +26,25 @@ def create_parser():
     '''
 
     parser = argparse.ArgumentParser(
-        description="Compute and append power spectra")
+        description="Visualize power spectra usings different optical depth methods")
 
     parser.add_argument("skewfname", help='Cholla skewer output file name', type=str)
 
+    parser.add_argument("analysisfname", help='Cholla analysis output file name', type=str)
+
     parser.add_argument("dlogk", help='Differential log of step-size for power spectrum k-modes', type=float)
 
-    parser.add_argument('-c', '--combine', help='Whether to combine power spectrum from each axis',
+    parser.add_argument('-l', '--logspace', help='Display relative difference in log-space',
                         action='store_true')
+
+    parser.add_argument('-f', '--fname', help='Output file name', type=str)
+
+    parser.add_argument('-o', '--outdir', help='Output directory', type=str)
 
     parser.add_argument('-v', '--verbose', help='Print info along the way',
                         action='store_true')
 
     return parser
-
-
-###
-# Create all data structures to fully explain power spectrum calculation
-# These data structures are pretty thorough, and not every line is readily needed
-# but I prioritize readability over less lines of code
-###
 
 
 ###
@@ -162,8 +164,71 @@ class ChollaFluxPowerSpectrumHead:
         return fft_binids
 
 
+    def get_FPS(self, local_opticaldepths, precision=np.float64):
+        '''
+        Return the Flux Power Spectrum given the local optical depths.
+            Expect 2-D array of shape (number skewers, line-of-sight cells)
 
+        Args:
+            local_opticaldepths (arr): local optical depths of all skewers
+            precision (np type): (optional) numpy precision to use
+        Return:
+            kmode_edges (arr): k mode edges array
+            P_k_mean (arr): mean transmitted flux power spectrum within kmode edges
+        '''
+        assert local_opticaldepths.ndim == 2
+        assert local_opticaldepths.shape[1] == self.n_los
+
+        n_skews = local_opticaldepths.shape[0]
+
+        # find the indices that describe where the k-mode FFT bins fall within kval_edges (from dlogk)
+        fft_binids = self.get_fft_binids(dtype_bin=np.int64, dtype_calc=np.float64)
+
+        # find number of fft modes that fall in requested dlogk bin id (used later to average total power in dlogk bin)
+        hist_n = np.zeros(self.n_bins, dtype=precision)
+        for bin_id in fft_binids[1:]:
+            hist_n[bin_id] += 1.
+        # (protect against dividing by zero)
+        hist_n[hist_n == 0] = 1.
+
+        # calculate local transmitted flux (& its mean)
+        fluxes = np.exp(-local_opticaldepths)
+        flux_mean = np.mean(fluxes)
+
+        # initialize total power array & temporary FFT array
+        hist_PS_vals = np.zeros(self.n_bins, dtype=precision)
+        P_k_tot = np.zeros(self.n_bins, dtype=precision)
+
+        for nSkewerID in range(n_skews):
+            # clean out temporary FFT array
+            hist_PS_vals[:] = 0.
+
+            # calculate flux fluctuation 
+            dFlux_skew = fluxes[nSkewerID] / flux_mean
+
+            # perform fft & calculate amplitude of fft
+            fft = np.fft.rfft(dFlux_skew)
+            fft2 = (fft.imag * fft.imag + fft.real * fft.real) / self.n_los / self.n_los
+
+            # add power for each fft mode
+            hist_PS_vals[fft_binids[1:]] += fft2[1:]
+
+            # take avg & scale by umax
+            delta_F_avg = hist_PS_vals / hist_n
+            P_k = self.u_max * delta_F_avg
+            P_k_tot += P_k
+
+        # average out by the number of skewers
+        P_k_mean = P_k_tot / n_skews
+
+        # grab k-mode bin edges
+        kmode_edges = self.get_kvals_edges(precision)
+
+        return (kmode_edges, P_k_mean)
+
+###
 # Skewer-specific information that interacts with skewers for a given skewer file
+###
 # ChollaOnTheFlySkewers_iHead   --> Holds skewer group
 # ChollaOnTheFlySkewers_i       --> Creates ChollaOnTheFlySkewer object
 # ChollaOnTheFlySkewers         --> Creates ChollaOnTheFlySkewers_i object
@@ -191,6 +256,7 @@ class ChollaOnTheFlySkewers_iHead:
         # number of skewers, assumes nstride is same along both j and k dims
         self.n_skews = int( (self.n_j * self.n_k) / (self.n_stride * self.n_stride) )
 
+
 class ChollaOnTheFlySkewers_i:
     '''
     Cholla On The Fly Skewers
@@ -209,64 +275,20 @@ class ChollaOnTheFlySkewers_i:
     def __init__(self, ChollaOTFSkewersiHead, fPath):
         self.OTFSkewersiHead = ChollaOTFSkewersiHead
         self.fPath = fPath
-        self.HI_str = 'HI_density'
-        self.HeII_str = 'HeII_density'
-        self.density_str = 'density'
-        self.vel_str = 'los_velocity'
-        self.temp_str = 'temperature'
-        self.local_opticaldepth_key = 'taucalc_local'
 
-        self.allkeys = {self.HI_str, self.HeII_str, self.density_str,
-                        self.vel_str, self.temp_str, self.local_opticaldepth_key}
-
-    def check_datakey(self, data_key):
+    def get_skewer_obj(self, skewid):
         '''
-        Check if a requested data key is valid to be accessed in skewers file
+        Return ChollaOnTheFlySkewer object of this analysis
 
         Args:
-            data_key (str): key string that will be used to access hdf5 dataset
+            skew_id (int): skewer id
         Return:
-            (bool): whether data_key is a part of expected data keys
+            OTFSkewer (ChollaOnTheFlySkewer): skewer object
         '''
+        OTFSkewerHead = ChollaOnTheFlySkewerHead(skewid, self.OTFSkewersiHead.n_i,
+                                                 self.OTFSkewersiHead.skew_key)
 
-        return data_key in self.allkeys
-
-    def get_skeweralldata(self, key, dtype=np.float32):
-        '''
-        Return a specific dataset for all skewers.
-            Use this method with caution, as the resulting array can be large
-
-            For (2048)^3 + nstride=4 + float64, resulting array will be ~4 GBs
-
-        Args:
-            key (str): key to access data from hdf5 file
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            arr (arr): requested dataset
-        '''
-
-        assert self.check_datakey(key)
-
-        arr = np.zeros((self.OTFSkewersiHead.n_skews, self.OTFSkewersiHead.n_i), dtype=dtype)
-        fObj = h5py.File(self.fPath, 'r')
-        arr[:,:] = fObj[self.OTFSkewersiHead.skew_key].get(key)[:, :]
-        fObj.close()
-
-        return arr
-
-    def get_alllocalopticaldepth(self, dtype=np.float32):
-        '''
-        Return local optical depth array for all skewers
-
-        Args:
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            arr (arr): local optical depth
-        '''
-
-        return self.get_skeweralldata(self.local_opticaldepth_key, dtype=dtype)
-
-
+        return ChollaOnTheFlySkewer(OTFSkewerHead, self.fPath)
 
 
 class ChollaOnTheFlySkewers:
@@ -279,6 +301,7 @@ class ChollaOnTheFlySkewers:
         Initialized with:
         - nSkewer (nSkewer): number of the skewer output
         - SkewersPath (str): directory path to skewer output files
+        - ChollaGrid (ChollaGrid): grid holding domain information
 
     Values are returned in code units unless otherwise specified.
     '''
@@ -300,7 +323,7 @@ class ChollaOnTheFlySkewers:
         self.set_cosmoinfo()
 
         # grab current hubble param & info needed to calculate hubble flow
-        H = self.get_currH() # [km s-1 Mpc-1]
+        H = self.get_currH()  # [km s-1 Mpc-1]
         cosmoh = self.H0 / 100.
 
         # calculate proper distance along each direction
@@ -308,7 +331,7 @@ class ChollaOnTheFlySkewers:
         dyproper = dy_Mpc * self.current_a / cosmoh
         dzproper = dz_Mpc * self.current_a / cosmoh
 
-        # calculate hubble flow through a cell along each axis
+        # calculate Hubble flow through a cell along each axis
         self.dvHubble_x = H * dxproper # [km s-1]
         self.dvHubble_y = H * dyproper
         self.dvHubble_z = H * dzproper
@@ -343,10 +366,11 @@ class ChollaOnTheFlySkewers:
         self.nstride_y = int(np.sqrt( (self.nz * self.nx)/(nskewersy) ))
         self.nstride_z = int(np.sqrt( (self.nx * self.ny)/(nskewersz) ))
 
-        # save cell distance in each direction to later calculate Hubble flow
+        # save cell distance in each direction to later calculate hubble flow
         self.dx = Lx / self.nx
         self.dy = Ly / self.ny
         self.dz = Lz / self.nz
+
 
     def set_cosmoinfo(self):
         '''
@@ -445,235 +469,133 @@ class ChollaOnTheFlySkewers:
         OTFSkewerz = ChollaOnTheFlySkewers_i(OTFSkewerszHead, self.OTFSkewersfPath)
 
         return OTFSkewerz
-
-    def get_FPS_i(self, OTFSkewers_i, FluxPowerSpectrumHead, precision=np.float64):
-        '''
-        Return the Flux Power Spectrum along the i-axis direction
-
-        Args:
-            OTFSkewers_i (ChollaOnTheFlySkewers_i): skewer object
-            FluxPowerSpectrumHead (ChollaFluxPowerSpectrumHead): power spectrum object
-            precision (np type): (optional) numpy precision to use
-        Return:
-            kmode_edges (arr): k mode edges array
-            P_k_mean (arr): mean transmitted flux power spectrum within kmode edges
-        '''
-        # find the indices that describe where the k-mode FFT bins fall within kval_edges (from dlogk)
-        fft_binids = FluxPowerSpectrumHead.get_fft_binids(dtype_bin=np.int64, dtype_calc=np.float64)
         
-         # find number of fft modes that fall in requested dlogk bin id (used later to average total power in dlogk bin)
-        hist_n = np.zeros(FluxPowerSpectrumHead.n_bins, dtype=precision)
-        for bin_id in fft_binids[1:]:
-            hist_n[bin_id] += 1.
-        # (protect against dividing by zero)
-        hist_n[hist_n == 0] = 1.
-
-        # grab local optical depths
-        local_opticaldepth = OTFSkewers_i.get_alllocalopticaldepth(precision)
-
-        # calculate local transmitted flux (& its mean)
-        fluxes = np.exp(-local_opticaldepth)
-        flux_mean = np.mean(fluxes)
-    
-        # initialize total power array
-        P_k_tot = np.zeros(FluxPowerSpectrumHead.n_bins, dtype=precision)
-
-        for nSkewerID in range(OTFSkewers_i.OTFSkewersiHead.n_skews):
-            # calculate flux fluctuation 
-            dFlux_skew = fluxes[nSkewerID] / flux_mean
-
-            # calculate fft & amplitude of fft
-            fft = np.fft.rfft(dFlux_skew)
-            fft2 = (fft.imag * fft.imag + fft.real * fft.real) / FluxPowerSpectrumHead.n_los / FluxPowerSpectrumHead.n_los
-
-            # add power for each fft mode
-            hist_PS_vals = np.zeros(FluxPowerSpectrumHead.n_bins, dtype=precision)
-            hist_PS_vals[fft_binids[1:]] += fft2[1:]
-
-            # take avg & scale by umax
-            delta_F_avg = hist_PS_vals / hist_n
-            P_k = FluxPowerSpectrumHead.u_max * delta_F_avg
-            P_k_tot += P_k
-
-        # average out by the number of skewers
-        P_k_mean = P_k_tot / OTFSkewers_i.OTFSkewersiHead.n_skews
-
-        # grab k-mode bin edges
-        kmode_edges = FluxPowerSpectrumHead.get_kvals_edges(precision)
-
-        return (kmode_edges, P_k_mean)
-
-    def get_FPS_x(self, dlogk, precision=np.float64):
-        '''
-        Return the Flux Power Spectrum along the x-axis
-
-        Args:
-            dlogk (float): differential step in log k-space
-            precision (np type): (optional) numpy precision to use
-        Return:
-            (arr): k mode edges array
-            (arr): mean transmitted flux power spectrum within kmode edges
-        '''
-        # create power spectrum object with x-axis geometry
-        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nx, self.dvHubble_x)
-        
-        # grab x-skewer object
-        OTFSkewers_x = self.get_skewersx_obj()
-
-        # return flux power spectrum along x-axis
-        return self.get_FPS_i(OTFSkewers_x, FluxPowerSpectrumHead, precision)
-
-    def get_FPS_y(self, dlogk, precision=np.float64):
-        '''
-        Return the Flux Power Spectrum along the y-axis
-
-        Args:
-            dlogk (float): differential step in log k-space
-            precision (np type): (optional) numpy precision to use
-        Return:
-            (arr): k mode edges array
-            (arr): mean transmitted flux power spectrum within kmode edges
-        '''
-        
-        # create power spectrum object with y-axis geometry
-        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.ny, self.dvHubble_y)
-        
-        # grab y-skewer object
-        OTFSkewers_y = self.get_skewersy_obj()
-
-        # return flux power spectrum along y-axis
-        return self.get_FPS_i(OTFSkewers_y, FluxPowerSpectrumHead, precision)
-
-    def get_FPS_z(self, dlogk, precision=np.float64):
-        '''
-        Return the Flux Power Spectrum along the z-axis
-
-        Args:
-            dlogk (float): differential step in log k-space
-            precision (np type): (optional) numpy precision to use
-        Return:
-            (arr): k mode edges array
-            (arr): mean transmitted flux power spectrum within kmode edges
-        '''
-
-        # create power spectrum object with z-axis geometry
-        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nz, self.dvHubble_z)
-        
-        # grab z-skewer object
-        OTFSkewers_z = self.get_skewersz_obj()
-
-        # return flux power spectrum along z-axis
-        return self.get_FPS_i(OTFSkewers_z, FluxPowerSpectrumHead, precision)
 
 
+###
+# Study specific functions
+###
 
-
-
-def P_k_calc(OTFSkewers, dlogk, combine=True, verbose=False, precision=np.float64):
+def plotFluxPowerSpectra_RelDiff(ax, k_model, Pk_model, Pk_tests, label_tests, log=False):
     '''
-    Calculate the mean transmitted flux power spectrum along each axis and save
-        onto skewer output file
+    Plot the relative difference of a set of flux power spectra
+    
+    Args:
+        ax (Axes.Image?):
+        k_model (arr): k-centers of the flux power spectrum
+        Pk_model (arr): flux power spectrum to compare against
+        Pk_tests (list of arrs): arrays of testing flux power spectra
+        label_tests (list of strs): strs to label each flux power spectra
+        log (bool): whether to display difference in log-space
+    Returns:
+        ...
+    '''
+    # make sure we have one label for each FPS
+    assert len(Pk_tests) == len(label_tests)
+    # make sure all power spectra are of the same size
+    for Pk_test in Pk_tests:
+        assert k_model.size == Pk_test.size
+    assert k_model.size == Pk_model.size
+
+    # calculate dimensionless model flux power spectra to compare against
+    delta2F_model = (1. / np.pi) * k_model * Pk_model
+
+    for i, Pk_test in enumerate(Pk_tests):
+        label = label_tests[i]
+        delta2F_test = (1. / np.pi) * k_model * Pk_test
+        delta2F_fracdiff = (delta2F_test - delta2F_model) / delta2F_model
+
+        # no nans here !
+        goodDelta2F = ~np.isnan(delta2F_fracdiff)
+        if log:
+            _ = ax.plot(k_model[goodDelta2F], np.abs(delta2F_fracdiff[goodDelta2F]), label=label)
+        else:
+            _ = ax.plot(k_model[goodDelta2F], delta2F_fracdiff[goodDelta2F], label=label)
+
+    # plase labels & limits if not already set
+    xlabel_str = r'$k\ [\rm{s\ km^{-1}}] $'
+    if log:
+        ylabel_str = r'$| D [ \Delta_F^2 (k) ] |$'
+    else:
+        ylabel_str = r'$D [ \Delta_F^2 (k) ] $'
+
+    _ = ax.set_xlabel(xlabel_str)
+    _ = ax.set_ylabel(ylabel_str)
+
+    if log:
+        ylow, yupp = 1e-6, 1e-1
+        _ = ax.set_ylim(ylow, yupp)
+        _ = ax.set_yscale('log')
+    else:
+        ylow, yupp = -0.1, 0.1
+        _ = ax.set_ylim(ylow, yupp)
+
+    # add x lims
+    xlow, xupp = 1e-3, 5e-2
+    _ = ax.set_xlim(xlow, xupp)
+
+    # set x log-scale
+    _ = ax.set_xscale('log')
+
+    # add background grid
+    _ = ax.grid(which='both', axis='both', alpha=0.3)
+
+    _ = ax.legend(fontsize=14, loc='upper right')
+
+    return
+
+
+def P_k_calc(OTFSkewers, dlogk, opticaldepth_key, verbose=False, precision=np.float64):
+    '''
+    Calculate the mean transmitted flux power spectrum along each axis and return the
+        averaged power spectrum
 
     Args:
         OTFSkewers (ChollaOnTheFlySkewers): skewers object, interacts with files
         dlogk (float): differential step in log k-space
-        combine (bool): (optional) whether to combine power spectrum from each axis
+        opticaldepth_key (str): key to access optical depth within skewer group
         verbose (bool): (optional) whether to print important information
         precision (np type): (optional) numpy precision to use in calculations
     Returns:
         ...
     '''
+    # Create Flux Power Spectrum header objects
+    FPSHead_x = ChollaFluxPowerSpectrumHead(dlogk, OTFSkewers.nx, OTFSkewers.dvHubble_x)
+    FPSHead_y = ChollaFluxPowerSpectrumHead(dlogk, OTFSkewers.ny, OTFSkewers.dvHubble_y)
+    FPSHead_z = ChollaFluxPowerSpectrumHead(dlogk, OTFSkewers.nz, OTFSkewers.dvHubble_z)
 
-    k_x, P_k_x = OTFSkewers.get_FPS_x(dlogk, precision)
-    k_y, P_k_y = OTFSkewers.get_FPS_y(dlogk, precision)
-    k_z, P_k_z = OTFSkewers.get_FPS_z(dlogk, precision)
+    # allocate memory for mean P(k) along each axis
+    Pk_x_mean = np.zeros(FPSHead_x.n_bins, dtype=precision)
+    Pk_y_mean = np.zeros(FPSHead_y.n_bins, dtype=precision)
+    Pk_z_mean = np.zeros(FPSHead_z.n_bins, dtype=precision)
 
-    # open file and append each power spectrum as new "PowerSpectrum" group
-    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+') as fObj:
-        PS_group_key = 'PowerSpectrum'
-        if PS_group_key not in fObj.keys():
-            if verbose:
-                print(f'\t...initializing power spectrum group for file {OTFSkewers.OTFSkewersfPath}')
+    OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(), OTFSkewers.get_skewersy_obj(),
+                      OTFSkewers.get_skewersz_obj()]
 
-            fObj.create_group(PS_group_key)
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r') as fObj:
+        for k, OTFSkewers_i in enumerate(OTFSkewers_lst):
+            if (k==0):
+                FPSHead_i = FPSHead_x
+                Pk_i_mean = Pk_x_mean
+            elif (k==1):
+                FPSHead_i = FPSHead_y
+                Pk_i_mean = Pk_y_mean
+            elif (k==2):
+                FPSHead_i = FPSHead_z
+                Pk_i_mean = Pk_z_mean
+            taus = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get(opticaldepth_key)[:]
+            _, Pk_i_mean[:] = FPSHead_i.get_FPS(taus, precision=precision)
+    fObj.close()
 
-        PS_x_avg_key = 'P_x(k_x)'
-        k_x_edges_key = 'k_x_edges'
-        PS_y_avg_key = 'P_y(k_y)'
-        k_y_edges_key = 'k_y_edges'
-        PS_z_avg_key = 'P_z(k_z)'
-        k_z_edges_key = 'k_z_edges'
+    Pk_avg = (Pk_x_mean + Pk_y_mean + Pk_z_mean) / 3.
+    k_skew = FPSHead_i.get_kvals(dtype=precision)
 
-        # ensure each key is in the PowerSpectrum Group
-        if PS_x_avg_key not in fObj[PS_group_key].keys():
-            if verbose:
-                print(f'\t...initializing empty power spectrum and k mode arrays in x-axis for file {OTFSkewers.OTFSkewersfPath}')
-
-            PS_x_empty = np.zeros(P_k_x.shape, dtype=P_k_x.dtype)
-            k_x_empty = np.zeros(k_x.shape, dtype=k_x.dtype)
-            fObj[PS_group_key].create_dataset(k_x_edges_key, data=k_x_empty)
-            fObj[PS_group_key].create_dataset(PS_x_avg_key, data=PS_x_empty)
-
-        if PS_y_avg_key not in fObj[PS_group_key].keys():
-            if verbose:
-                print(f'\t...initializing empty power spectrum and k mode arrays in y-axis for file {OTFSkewers.OTFSkewersfPath}')
-
-            PS_y_empty = np.zeros(P_k_y.shape, dtype=P_k_y.dtype)
-            k_y_empty = np.zeros(k_y.shape, dtype=k_y.dtype)
-            fObj[PS_group_key].create_dataset(k_y_edges_key, data=k_y_empty)
-            fObj[PS_group_key].create_dataset(PS_y_avg_key, data=PS_y_empty)
-
-        if PS_z_avg_key not in fObj[PS_group_key].keys():
-            if verbose:
-                print(f'\t...initializing empty power spectrum and k mode arrays in z-axis for file {OTFSkewers.OTFSkewersfPath}')
-            PS_z_empty = np.zeros(P_k_z.shape, dtype=P_k_z.dtype)
-            k_z_empty = np.zeros(k_z.shape, dtype=k_z.dtype)
-            fObj[PS_group_key].create_dataset(k_z_edges_key, data=k_z_empty)
-            fObj[PS_group_key].create_dataset(PS_z_avg_key, data=PS_z_empty)
-
-        if verbose:
-            print(f'\t...assigning power spectrum and k edges in each axis file {OTFSkewers.OTFSkewersfPath}')
-        fObj[PS_group_key][k_x_edges_key][:] = k_x[:]
-        fObj[PS_group_key][PS_x_avg_key][:] = P_k_x[:]
-
-        fObj[PS_group_key][k_y_edges_key][:] = k_y[:]
-        fObj[PS_group_key][PS_y_avg_key][:] = P_k_y[:]
-
-        fObj[PS_group_key][k_z_edges_key][:] = k_z[:]
-        fObj[PS_group_key][PS_z_avg_key][:] = P_k_z[:]
-
-        if combine:
-            # before combining power spectrum along each direction, make sure they're of same shape
-            assert np.array_equal(P_k_x.shape, P_k_y.shape)
-            assert np.array_equal(P_k_x.shape, P_k_z.shape)
-
-            # also need to assert that k_xyz are all within some tolerance level
-            # for now assume they're the same, and save k_x by default !
-
-            # combined power spectrum
-            P_k = (P_k_x + P_k_y + P_k_z) / 3.
-            PS_avg_key = 'P(k)'
-            k_edges_key = 'k_edges'
-            if PS_avg_key not in fObj[PS_group_key].keys():
-                if verbose:
-                    print(f'\t...initializing empty power spectrum average and k mode arrays for file {OTFSkewers.OTFSkewersfPath}')
-                PS_empty = np.zeros(P_k.shape, dtype=P_k.dtype)
-                k_empty = np.zeros(k_x.shape, dtype=k_x.dtype)
-                fObj[PS_group_key].create_dataset(k_edges_key, data=k_empty)
-                fObj[PS_group_key].create_dataset(PS_avg_key, data=PS_empty)
-
-            if verbose:
-                print(f'\t...assigning average power spectrum and k edges for file {OTFSkewers.OTFSkewersfPath}')
-            fObj[PS_group_key][k_edges_key][:] = k_x[:]
-            fObj[PS_group_key][PS_avg_key][:] = P_k[:]
-
-    return
-
+    return k_skew, Pk_avg
 
 
 def main():
     '''
-    Compute the power spectrum and append to skewer file
+    Append the array of median optical depths for a skewer file
     '''
 
     # Create parser
@@ -685,22 +607,11 @@ def main():
     if args.verbose:
         print("we're verbose in this mf !")
         print(f"--- We are looking at skewer file : {args.skewfname} ---")
-        print(f"--- We are placing power spectra in dlogk : {args.dlogk} ---")
-        
-        if args.combine:
-            print(f"--- We are saving combined power spectra (!) ---")
-        else:
-            print(f"--- We are NOT saving combined power spectra (!) ---")
+        print(f"--- Comparing against analysis file : {args.analysisfname} ---")
+        if args.logspace:
+            print(f"--- We are showing difference in log-space ---")
 
     precision = np.float64
-
-    # ensure that local optical depth is a dataset
-    fObj = h5py.File(args.skewfname, 'r')
-    local_opticaldepth_key = 'taucalc_local'
-    assert local_opticaldepth_key in fObj['skewers_x'].keys()
-    assert local_opticaldepth_key in fObj['skewers_y'].keys()
-    assert local_opticaldepth_key in fObj['skewers_z'].keys()
-    fObj.close()
 
     # ensure dlogk is reasonable
     assert args.dlogk > 0
@@ -712,19 +623,98 @@ def main():
         args.skewfname = cwd + '/' + relative_path
 
     # seperate the skewer output number and skewer directory
+    # save parent directory to get analysis directory too
     skewfName = args.skewfname.split('/')[-1]
     nSkewerOutput = int(skewfName.split('_')[0])
     skewersdir = args.skewfname[:-(len(skewfName)+1)]
+    skewersdir_name = skewersdir.split('/')[-1]
+    parentdir = skewersdir[:-(len(skewersdir_name)+1)]
+    analysisdir = parentdir + '/analysis'
 
     # create ChollaOTFSkewers object
     OTFSkewers = ChollaOnTheFlySkewers(nSkewerOutput, skewersdir)
+    
+    # get power spectra we're using to compare against
+    # assume analysis and skewers have the same parent directory
+    analysisfname = analysisdir + f"/{nSkewerOutput:.0f}_analysis.h5"
+    with h5py.File(analysisfname, 'r') as fObj_analysis:
+        fObj_analysis = h5py.File(args.analysisfname, 'r')
+        Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')
 
-    # calculate the power spectra
-    P_k_calc(OTFSkewers, args.dlogk, args.combine, args.verbose, precision=np.float64)
+    # get power spectra serving as our tests
+    opticaldepth_testkeys = ['taucalc_local_1sig', 'taucalc_local_3sig', 
+                         'taucalc_local_5sig', 'taucalc_local_8sig', 'taucalc_local_allLOS']
+
+    Pk_avg_tests = []
+    testlabels = []
+    for k, opticaldepth_key in enumerate(opticaldepth_testkeys):
+        k_skew, Pk_avg = P_k_calc(OTFSkewers, args.dlogk, opticaldepth_key, args.verbose, precision)
+        Pk_avg_tests.append(Pk_avg)
+
+        if (k == 0):
+            numsigma = 1
+        elif (k == 1):
+            numsigma = 3
+        elif (k == 2):
+            numsigma = 5
+        elif (k == 3):
+            numsigma = 8
+
+        if (k < 4):
+            labelstr = rf'${numsigma:.0f} - b$'
+            testlabels.append(labelstr)
+        else:
+            testlabels.append(r'$\rm{Entire}$ $\rm{LOS}$')
+
+    # plottin time !
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
+    plotFluxPowerSpectra_RelDiff(ax, k_skew, Pk_analysis, Pk_avg_tests, testlabels, args.logspace)
+
+    # add redshift str
+    xlow, xupp = 1e-3, 5e-2
+    redshift_str = rf"$z = {OTFSkewers.current_z:.4f}$"
+    x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
+    if args.logspace:
+        y_redshift = 3.e-6
+    else:
+        y_redshift = -0.080
+    _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
+    
+    # tighten layout
+    _ = fig.tight_layout()
+
+    # saving time !
+    if args.outdir:
+        outdir = args.outdir
+    else:
+        outdir = cwd
+    if args.fname:
+        fName = args.fname
+    else:
+        if args.logspace:
+            fName = f'PowerSpectraLogDiff_{nSkewerOutput:.0f}skewers.png'
+        else:
+            fName = f'PowerSpectraDiff_{nSkewerOutput:.0f}skewers.png'
+
+    if args.verbose:
+        if args.outdir:
+            print(f"--- We are placing the output file in : {outdir} ---")
+        else:
+            print(f"--- No output directory specified, so placing image in CWD: {outdir} ---")
+
+        if args.fname:
+            print(f"--- We are saving the plot with file name : {fName} ---")
+        else:
+            print(f"--- No output file name specified, so it will be named : {fName} ---")
 
 
+    fImgPath = outdir + "/" + fName
+    fig.savefig(fImgPath, dpi=256, bbox_inches = "tight")
+    plt.close(fig)
+
+
+        
 
 if __name__=="__main__":
     main()
-
 

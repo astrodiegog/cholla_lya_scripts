@@ -1,10 +1,11 @@
 import argparse
 import os
 
+from time import time
+
 import numpy as np
 import h5py
 from scipy.special import erf
-
 
 
 ###
@@ -27,7 +28,7 @@ def create_parser():
 
     parser.add_argument("skewfname", help='Cholla skewer output file name', type=str)
 
-    parser.add_argument('-l', '--local', help='Whether to store local optical depths',
+    parser.add_argument('-r', '--restart', help='Reset progress bool array', 
                         action='store_true')
 
     parser.add_argument('-v', '--verbose', help='Print info along the way', 
@@ -79,7 +80,6 @@ class ChollaCosmologyHead:
         - w0 (float): constant term in dark energy equation of state
         - wa (float): linear term in dark energy equation of state
         - H0 (float): present-day Hubble parameter in units of [km / s / Mpc]
-
     '''
 
     def __init__(self, OmegaM, OmegaR, OmegaK, OmegaL, w0, wa, H0):
@@ -125,28 +125,6 @@ class ChollaCosmologyHead:
 
         # critical density in units of [h2 Msun kpc-3]
         self.rho_crit0_cosmo = self.rho_crit0_cgs * (self.kpc3_cgs) / (self.Msun_cgs) / self.h_cosmo / self.h_cosmo
-
-        # Normalization factors from Cholla source code method Initialize_Cosmology. Not 100% sure what they mean
-        self.r0_gas = 1.0 # simulation ran with gas in [h-1 kpc] (???????)
-        self.t0_gas = self.t_H0_cosmo / self.h_cosmo
-        self.v0_gas = self.r0_gas / self.t0_gas
-        self.rho0_gas = self.rho_crit0_cosmo * self.OmegaM
-        self.phi0_gas = self.v0_gas * self.v0_gas  # energy units
-        self.e0_gas = self.v0_gas * self.v0_gas
-        self.p0_gas = self.rho0_gas * self.v0_gas * self.v0_gas # pressure units
-
-        # conversion factors between cosmo [kpc/km Msun kyr] and cgs [cm gram sec] units
-        # these factors DO NOT account for comoving units (ie, scale factor not incorporated)
-        # multiplying array (in cgs units) by array_cgs2cosmo provides array in cosmo units
-        # multiplying array (in cosmo units) by array_cosmo2cgs provides array in cgs units
-        self.density_cgs2cosmo = self.rho_crit0_cosmo # [h2 Msun kpc-3]
-        self.density_cosmo2cgs = 1. / self.density_cgs2cosmo
-
-        self.velocity_cgs2cosmo = self.km_cgs # [km s-1]
-        self.velocity_cosmo2cgs = 1. / self.velocity_cgs2cosmo
-
-        self.mom_cgs2cosmo = self.density_cgs2cosmo * self.km_cgs # [h2 Msun kpc-3  km s-1]
-        self.mom_cosmo2cgs = 1. / self.mom_cgs2cosmo
 
 
 class ChollaSnapCosmologyHead:
@@ -313,7 +291,7 @@ class ChollaCosmoCalculator:
         arr[:] = np.exp(ln_density_cgs) # [g cm-3]
 
         return arr
-    
+
     def velocity_cosmo2cgs(self, velocity_cosmo):
         '''
         Convert the velocity saved in cosmology units of [km s-1] to the cgs
@@ -398,7 +376,6 @@ class ChollaHydroCalculator:
         return arr
 
 
-
 class ChollaSkewerCosmoCalculator:
     '''
     Cholla Skewer Calculator object
@@ -468,7 +445,7 @@ class ChollaSkewerCosmoCalculator:
 
         return arr_ghost
 
-    def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp, use_forloop=True):
+    def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp, num_sigs=0):
         '''
         Compute the optical depth for each cell along the line-of-sight
 
@@ -476,6 +453,7 @@ class ChollaSkewerCosmoCalculator:
             densityHI (arr): ionized Hydrogen comoving density [h2 Msun kpc-3]
             velocity_pec (arr): peculiar velocity [km s-1]
             temp (arr): temperature [K]
+            num_sigs (int): (optional) number of standard deviations to around mean
         Returns:
             tau (arr): optical depth for each cell
         '''
@@ -511,7 +489,7 @@ class ChollaSkewerCosmoCalculator:
         # initialize optical depths
         tau_ghost = self.snapCosmoCalc_ghost.create_arr()
 
-        if use_forloop:
+        if num_sigs == 0:
             # OLD IMPLEMENTATION
             for losid in range(self.n_los_ghost):
                 vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
@@ -521,18 +499,25 @@ class ChollaSkewerCosmoCalculator:
                 # [cm3 * # density] = [cm3 * cm-3] = []
                 tau_ghost[losid] = sigma_Lya * np.sum(nHI_phys_ghost_cgs * (erf(y_R) - erf(y_L))) / 2.0
         else:
-            # NEW IMPLEMENTATION w/o for-loop, uses more memory
-            vHL_repeat = np.repeat(self.vHubbleL_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost))
-            vHR_repeat = np.repeat(self.vHubbleR_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost))
+            # NEW IMPLEMENTATION -- dynamic scaling of x-sigs
+            five_sigs = (num_sigs) * (doppler_param_ghost_cgs)
 
-            density_repeat = np.repeat(nHI_phys_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost)).T
-            vel_repeat = np.repeat(velocity_phys_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost)).T
-            doppler_repeat = np.repeat(doppler_param_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost)).T
+            vHC_fivesig_upp_all = self.vHubbleC_ghost_cgs + five_sigs
+            vHC_fivesig_low_all = self.vHubbleC_ghost_cgs - five_sigs
 
-            yL_all = (vHL_repeat - vel_repeat) / doppler_repeat
-            yR_all = (vHR_repeat - vel_repeat) / doppler_repeat
-
-            tau_ghost[:] = sigma_Lya * np.sum(density_repeat * (erf(yR_all) - erf(yL_all)), axis=1) / 2.0
+            for losid in range(self.n_los_ghost):
+                vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
+                # evaluate the five-sig mask here
+                vHC_fivesig_upp = vHC_fivesig_upp_all[losid]
+                vHC_fivesig_low = vHC_fivesig_low_all[losid]
+                fivesig_mask = (velocity_phys_ghost_cgs < vHC_fivesig_upp) & (velocity_phys_ghost_cgs > vHC_fivesig_low)
+                vel_fivesig = velocity_phys_ghost_cgs[fivesig_mask]
+                doppler_fivesig = doppler_param_ghost_cgs[fivesig_mask]
+                nHI_fivesig = nHI_phys_ghost_cgs[fivesig_mask]
+                # calculate line center shift in terms of broadening scale
+                y_L = (vH_L - vel_fivesig) / doppler_fivesig
+                y_R = (vH_R - vel_fivesig) / doppler_fivesig
+                tau_ghost[losid] = (sigma_Lya / 2.0) * np.sum(nHI_fivesig * (erf(y_R) - erf(y_L)))
 
 
         # clip edges
@@ -705,15 +690,6 @@ class ChollaOnTheFlySkewers_i:
     def __init__(self, ChollaOTFSkewersiHead, fPath):
         self.OTFSkewersiHead = ChollaOTFSkewersiHead
         self.fPath = fPath
-
-        self.HI_str = 'HI_density'
-        self.HeII_str = 'HeII_density'
-        self.density_str = 'density'
-        self.vel_str = 'los_velocity'
-        self.temp_str = 'temperature'
-
-        self.allkeys = {self.HI_str, self.HeII_str, self.density_str,
-                        self.vel_str, self.temp_str}
 
     def get_skewer_obj(self, skewid):
         '''
@@ -910,8 +886,92 @@ class ChollaOnTheFlySkewers:
         return OTFSkewerz
 
 
-# create functions that will open and write data
-def init_taucalc(OTFSkewers, verbose=False, local=False):
+###
+# Study specific functions
+###
+
+def print_info(OTFSkewers):
+    '''
+    Print out relevant information for this study that was calculated
+
+    Args:
+        OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
+    Returns:
+        ...
+    '''
+
+    print(f'Info regarding the skewers measured at redshift = {OTFSkewers.current_z:.4f}')
+    print('We are showing the Mean +/- Standard deviation for statistics measured comparing')
+    print('\t line of sight calculation methods')
+
+    OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(), OTFSkewers.get_skewersy_obj(),
+                      OTFSkewers.get_skewersz_obj()]
+
+    opticaldepth_local_xsig_keys = ['taucalc_local_1sig', 'taucalc_local_3sig',
+                                    'taucalc_local_5sig', 'taucalc_local_8sig']
+    opticaldepth_eff_xsig_keys = ['taucalc_eff_1sig', 'taucalc_eff_3sig',
+                                  'taucalc_eff_5sig', 'taucalc_eff_8sig']
+    opticaldepth_time_xsig_keys = ['taucalc_time_1sig', 'taucalc_time_3sig',
+                                   'taucalc_time_5sig', 'taucalc_time_8sig']
+
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r') as fObj:
+        for OTFSkewers_i in OTFSkewers_lst:
+            print('Looking at ', OTFSkewers_i.OTFSkewersiHead.skew_key)
+
+            # grab data
+            tau_eff_entireLOS = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_eff_allLOS')[:]
+            tau_local_entireLOS = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_local_allLOS')[:]
+            tau_time_entireLOS = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_time_allLOS')[:]
+            flux_local_entireLOS = np.exp(-tau_local_entireLOS.flatten())
+        
+            flux_mean, flux_std = np.mean(flux_local_entireLOS), np.std(flux_local_entireLOS)
+            time_tot, time_mean, time_std = np.sum(tau_time_entireLOS), np.mean(tau_time_entireLOS), np.std(tau_time_entireLOS)
+
+            print(f'With entire line of sight...')
+            print(f'\t Mean flux: {flux_mean:.4e} +/- {flux_std:.4e}')
+            print(f'\t Mean calculation time / skewer: {time_mean:.4e} +/- {time_std:.4e}')
+            print(f'\t Total Calculation time skewers: {time_tot:.4e}')
+
+            for k, optdepth_local_key in enumerate(opticaldepth_eff_xsig_keys):
+                if (k == 0):
+                    numsigma = 1
+                elif (k == 1):
+                    numsigma = 3
+                elif (k == 2):
+                    numsigma = 5
+                elif (k == 3):
+                    numsigma = 8
+
+                optdepth_eff_key = opticaldepth_eff_xsig_keys[k]
+                optdepth_time_key = opticaldepth_time_xsig_keys[k]
+
+                tau_eff_xsig = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get(optdepth_eff_key)[:]
+                tau_loc_xsig = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get(optdepth_local_key)[:]
+                tau_time_xsig = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get(optdepth_time_key)[:]
+                flux_local_xsig = np.exp(-tau_loc_xsig.flatten())
+
+                flux_mean, flux_std = np.mean(flux_local_xsig), np.std(flux_local_xsig)
+                time_tot, time_mean, time_std = np.sum(tau_time_xsig), np.mean(tau_time_xsig), np.std(tau_time_xsig)
+
+                abs_err = np.abs(tau_eff_entireLOS - tau_eff_xsig)
+                rel_err = np.abs((tau_eff_entireLOS - tau_eff_xsig) / tau_eff_entireLOS)
+
+                print(12*'---')
+                print(f'Using {numsigma:.0f} - b window...')
+                print(f'\t Mean flux: {flux_mean:.4e} +/- {flux_std:.4e}')
+                print(f'\t Calculation time / skewer: {time_mean:.4e} +/- {time_std:.4e}')
+                print(f'\t Total Calculation time: {time_tot:.4e}\n')
+                print(f'\t Comparing effective local optical depths we find...')
+                print(f'\t\t (absolute error) median: {np.median(abs_err):.4e} | mean +/- std: {np.mean(abs_err):.4e} +/- {np.std(abs_err):.4e}')
+                print(f'\t\t (relative error) median: {np.median(rel_err):.4e} | mean +/- std: {np.mean(rel_err):.4e} +/- {np.std(rel_err):.4e}')
+            print(12*'---', '\n')
+
+
+    return
+
+
+
+def init_taucalc(OTFSkewers, restart = False, verbose=False):
     '''
     Initialize the calculation of the effective optical depth. For each skewers_i axis
         group, create three things:
@@ -924,11 +984,11 @@ def init_taucalc(OTFSkewers, verbose=False, local=False):
 
     Args:
         OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
+        restart (bool): (optional) whether to reset progress and set all 
+                        taucalc_bool to False
         verbose (bool): (optional) whether to print important information
-        local (bool): (optional) whether to save local optical depths
     Returns:
         ...
-
     '''
 
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+') as fObj:
@@ -946,26 +1006,86 @@ def init_taucalc(OTFSkewers, verbose=False, local=False):
             skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
 
             taucalc_bool = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=bool)
-            taucalc = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_eff_allLOS = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_time_allLOS = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            
+            taucalc_eff_1sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_time_1sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
 
-            if 'taucalc_prog' not in dict(fObj[skew_key].attrs).keys():
+            taucalc_eff_3sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_time_3sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+
+            taucalc_eff_5sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_time_5sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+
+            taucalc_eff_8sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_time_8sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+
+            taucalc_local_allLOS = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+                                          dtype=np.float64)
+            taucalc_local_1sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+                                          dtype=np.float64)
+            taucalc_local_3sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+                                          dtype=np.float64)
+            taucalc_local_5sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+                                          dtype=np.float64)
+            taucalc_local_8sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+                                          dtype=np.float64)
+
+
+            if (restart) or ('taucalc_prog' not in dict(fObj[skew_key].attrs).keys()):
                 fObj[skew_key].attrs['taucalc_prog'] = 0.
+
             if 'taucalc_bool' not in fObj[skew_key].keys():
                 fObj[skew_key].create_dataset('taucalc_bool', data=taucalc_bool)
-            if 'taucalc_eff' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff', data=taucalc)
-            if ((local) and 'taucalc_local' not in fObj[skew_key].keys()):
-                taucalc_local = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
-                                          dtype=np.float64)
-                fObj[skew_key].create_dataset('taucalc_local', data=taucalc_local)
+            elif restart:
+                fObj[skew_key]['taucalc_bool'][:] = False
+            
+            if 'taucalc_eff_allLOS' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_eff_allLOS', data=taucalc_eff_allLOS)
+            if 'taucalc_time_allLOS' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_time_allLOS', data=taucalc_time_allLOS)
+            
+            if 'taucalc_eff_1sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_eff_1sig', data=taucalc_eff_1sig)
+            if 'taucalc_time_1sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_time_1sig', data=taucalc_time_1sig)
+
+            if 'taucalc_eff_3sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_eff_3sig', data=taucalc_eff_3sig)
+            if 'taucalc_time_3sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_time_3sig', data=taucalc_time_3sig)
+
+            if 'taucalc_eff_5sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_eff_5sig', data=taucalc_eff_5sig)
+            if 'taucalc_time_5sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_time_5sig', data=taucalc_time_5sig)
+
+            if 'taucalc_eff_8sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_eff_8sig', data=taucalc_eff_8sig)
+            if 'taucalc_time_8sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_time_8sig', data=taucalc_time_8sig)
+
+            if 'taucalc_local_allLOS' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_local_allLOS', data=taucalc_local_allLOS)
+            if 'taucalc_local_1sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_local_1sig', data=taucalc_local_1sig)
+            if 'taucalc_local_3sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_local_3sig', data=taucalc_local_3sig)
+            if 'taucalc_local_5sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_local_5sig', data=taucalc_local_5sig)
+            if 'taucalc_local_8sig' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_local_8sig', data=taucalc_local_8sig)
+
+
 
     if verbose:
         print("...initialization complete !")
-
+    
     return
 
 
-def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False, local=False):
+def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
     '''
     Calculate the effective optical depth for each skewer along an axis
 
@@ -974,7 +1094,6 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False, lo
         skewCosmoCalc (ChollaSkewerCosmoCalculator): holds optical depth function
         precision (np type): (optional) numpy precision to use
         verbose (bool): (optional) whether to print important information
-        local (bool): (optional) whether to save local optical depths
     Returns:
         ...
     '''
@@ -998,15 +1117,51 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False, lo
             vel = OTFSkewer.get_losvelocity(precision)
             densityHI = OTFSkewer.get_HIdensity(precision)
             temp = OTFSkewer.get_temperature(precision)
-            taus = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, use_forloop=True)
-            tau_eff = np.median(taus)
 
-            # update attr, bool arr, and tau arr
+            time_allLOS_start = time()
+            taus_allLOS = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=0)
+            time_allLOS_end = time()
+
+            time_1sig_start = time()
+            taus_1sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=1)
+            time_1sig_end = time()
+
+            time_3sig_start = time()
+            taus_3sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=3)
+            time_3sig_end = time()
+            
+            time_5sig_start = time()
+            taus_5sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=5)
+            time_5sig_end = time()
+
+            time_8sig_start = time()
+            taus_8sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=8)
+            time_8sig_end = time()
+
+
+            # update attr, bool arr, and tau arrs
             fObj[skew_key].attrs['taucalc_prog'] += (1. / OTFSkewers_i.OTFSkewersiHead.n_skews)
             fObj[skew_key]['taucalc_bool'][nSkewerID] = True
-            fObj[skew_key]['taucalc_eff'][nSkewerID] = tau_eff
-            if local:
-                fObj[skew_key]['taucalc_local'][nSkewerID] = taus
+            
+            fObj[skew_key]['taucalc_eff_allLOS'][nSkewerID] = np.median(taus_allLOS)
+            fObj[skew_key]['taucalc_time_allLOS'][nSkewerID] = time_allLOS_end - time_allLOS_start
+            fObj[skew_key]['taucalc_local_allLOS'][nSkewerID] = taus_allLOS
+
+            fObj[skew_key]['taucalc_eff_1sig'][nSkewerID] = np.median(taus_1sig)
+            fObj[skew_key]['taucalc_time_1sig'][nSkewerID] = time_1sig_end - time_1sig_start
+            fObj[skew_key]['taucalc_local_1sig'][nSkewerID] = taus_1sig
+
+            fObj[skew_key]['taucalc_eff_3sig'][nSkewerID] = np.median(taus_3sig)
+            fObj[skew_key]['taucalc_time_3sig'][nSkewerID] = time_3sig_end - time_3sig_start
+            fObj[skew_key]['taucalc_local_3sig'][nSkewerID] = taus_3sig
+
+            fObj[skew_key]['taucalc_eff_5sig'][nSkewerID] = np.median(taus_5sig)
+            fObj[skew_key]['taucalc_time_5sig'][nSkewerID] = time_5sig_end - time_5sig_start
+            fObj[skew_key]['taucalc_local_5sig'][nSkewerID] = taus_5sig
+
+            fObj[skew_key]['taucalc_eff_8sig'][nSkewerID] = np.median(taus_8sig)
+            fObj[skew_key]['taucalc_time_8sig'][nSkewerID] = time_8sig_end - time_8sig_start
+            fObj[skew_key]['taucalc_local_8sig'][nSkewerID] = taus_8sig
 
             if ((verbose) and ( (fObj[skew_key].attrs['taucalc_prog'] // 0.1) > progress_tenperc) ):
                 print(f"--- Completed {fObj[skew_key].attrs['taucalc_prog'] * 100 : .0f} % at skewer {nSkewerID:.0f} ---")
@@ -1016,8 +1171,6 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False, lo
         print("Effective optical depth calculation completed along ", OTFSkewers_i.OTFSkewersiHead.skew_key)
 
     return
-
-
 
 def main():
     '''
@@ -1033,40 +1186,12 @@ def main():
     if args.verbose:
         print("we're verbose in this mf !")
         print(f"--- We are looking at skewer file : {args.skewfname} ---")
-        if args.local:
-            print(f"--- We are saving local optical depths (!) ---")
+        if args.restart:
+            print(f"--- We are reseting calculation from beginning ---")
         else:
-            print(f"--- We are NOT saving local optical depths (!) ---")
+            print(f"--- We are continuing calculation if already started ---")
 
     precision = np.float64
-    
-    _ = '''
-    # create set of all param values we are interested in saving
-    params2grab = {'nx', 'ny', 'nz', 'xmin', 'ymin', 'zmin', 'xlen', 'ylen', 'zlen',
-                    'H0', 'Omega_M', 'Omega_L', 'Omega_K', 'Omega_R', 'Omega_b', 'w0', 'wa',
-                    'analysis_scale_outputs_file', 'skewersdir', 'lya_skewers_stride'}
-
-    # read in params from param text file
-    params = {}
-    with open(args.param, 'r') as paramfile:
-        for line in paramfile:
-            # strip whitespace, then split by key-value pair assignment
-            keyval_str = '='
-            linesplit = line.strip().split(keyval_str)
-            is_keyvalpair = len(linesplit) == 2
-            if is_keyvalpair:
-                key_str, val_str = linesplit
-                if key_str in params2grab:
-                    params[key_str] = val_str
-
-    if len(params) != len(params2grab):
-        print(f'--- MISSING FOLLOWING PARAMS IN PARAM TXT FILE {args.param} ---')
-        for param in params2grab:
-            if param not in params.keys():
-                print('\t - ', param)
-        print('--- PLEASE FIX... EXITING ---')
-        exit()
-    '''
 
     # convert relative path to skewer file name to absolute file path
     cwd = os.getcwd()
@@ -1083,16 +1208,17 @@ def main():
     OTFSkewers = ChollaOnTheFlySkewers(nSkewerOutput, skewersdir)
 
     # add progress attribute, boolean mask for whether tau is calculated, and tau itself
-    init_taucalc(OTFSkewers, args.verbose, args.local)
+    init_taucalc(OTFSkewers, args.restart, args.verbose)
 
     # create cosmology and snapshot header
     chCosmoHead = ChollaCosmologyHead(OTFSkewers.Omega_M, OTFSkewers.Omega_R, 
                                       OTFSkewers.Omega_K, OTFSkewers.Omega_L,
                                       OTFSkewers.w0, OTFSkewers.wa, OTFSkewers.H0)
     snapHead = ChollaSnapHead(nSkewerOutput + 1, OTFSkewers.current_a) # snapshots are index-1
-       
+        
     OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(), OTFSkewers.get_skewersy_obj(),
                       OTFSkewers.get_skewersz_obj()]
+
 
     # complete calculation
     for i, OTFSkewers_i in enumerate(OTFSkewers_lst):
@@ -1110,8 +1236,9 @@ def main():
             dx = OTFSkewers.dz
 
         skewCosmoCalc = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, nlos, dx, precision)
-        taucalc(OTFSkewers_i, skewCosmoCalc, precision, args.verbose, args.local)
+        taucalc(OTFSkewers_i, skewCosmoCalc, precision, args.verbose)
 
+    print_info(OTFSkewers)
 
         
 

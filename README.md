@@ -2,63 +2,71 @@
 
 Python scripts to study the Lyman-alpha Forest in cosmological Cholla simulations
 
-We would like to study the optical depth and transmitted flux power spectrum in a cosmological Cholla simulation. Our end goal will be a flux power spectrum, which comes from two inputs:
+We would like to study the optical depth calculation and transmitted flux power spectrum for a cosmological Cholla simulation, using different optical depth criteria. Our end goal will be showing the difference between a calculated transmitted flux power spectrum against the one outputted from the analysis file. 
 
-1. On-The-Fly Skewer File
-2. Differential log-space to group Fourier Transform bins
+What exactly are we comparing? Well ... [include explanation from overleaf] 
 
-We first run `optdepth.py` to calculate the optical depth along a skewer, then `powspec.py` to calculate the transmitted flux power spectrum.
+We will have a couple outputs:
 
-What is the expected contents in the On-The-Fly Skewer File? 3 datasets for each of `skewers_x`, `skewers_y`, and `skewers_z` groups:
+1. ``scriptlogs/`` - directory holding information from optical depth calculation
+2. ``PowerSpectraPlotsDiff/`` - directory holding 2 plots and directories of individual plots, displaying the relative error of the transmitted flux power spectrum, with and without log-space
 
-1. ``HI_density`` - ionized Hydrogen in comoving density units of $h^2 \textrm{M}\_{\odot} \textrm{kpc}^3$ 
-2. ``los_velocity`` - line-of-sight peculiar velocity along a skewer in units of $\textrm{km} \textrm{s}^{-1}$ 
-3. ``temperature`` - temperature in units of $\textrm{K}$ 
+We need 5 inputs:
 
-Each dataset is expected to be in shape of the number of skewers and line-of-sight cells $(n\_{\textrm{skewers}}, n\_{\textrm{LOS}})$.
+1. ``skewers/`` - directory holding skewer outputs
+2. ``analysis/`` - directory holding analysis outputs
+3. ``study/`` - directory holding outputs
+4. ``dlogk`` - differential step in log k-space
+5. ``OutputStr`` - string of outputs to study, delimited by commas
 
-10 attributes are also expected:
 
-1. ``Lbox`` - length of simulated box in units of $\textrm{kpc}$
-2. ``Omega_R`` - Present-Day Radiation Energy Density
-3. ``Omega_M`` - Present-Day Matter Energy Density
-4. ``Omega_L`` - Present-Day Dark Energy Density
-5. ``Omega_K`` - Present-Day Spatial Curvature Energy Density
-6. ``w0`` and ``wa`` - parameters specifying time-evolving Dark Energy equation of state
-7. ``current_a`` and ``current_z`` - scale factor and redshift at which skewer data is taken
-8. ``H0`` - Present-Day Hubble parameter in units of $\textrm{kpc} / \textrm{s} / \textrm{Mpc}$
-
-The two scripts have been written with the python package [argparse](https://docs.python.org/3/howto/argparse.html) which allows for a quick command line interface.
-
-To calculate the optical depth, we expect one positional argument of the Cholla skewer output file name, taking two optional parameters whether to store the local optical depth along a skewer and a verbose flag.
-
-To calculate the optical depth, we run
+How do we run the speed-up study? First we create all of the directories and slurm files required using `setup_study.py`
 
 ```
-$ python3 optdepth.py $SKEWERFILE -v -l
+$ python3 setup_study.py $skewersDir $analysisDir $studyDir $dlogk $OutputStr -v
 ```
 
-where 
+where
 
-``$SKEWERFILE`` is the one positional argument - the skewer output file
 ``-v`` flags the script to be verbose throughout the calculation
-``-l`` flags the script to save the local optical depth
-
-To only save the median optical depth, and not the local optical depth, do not include the ``-l`` flag.
+``-n`` flags the name of the study to be something other than the last directory of ``$studyDir``
 
 
-To calculate the transmitted flux power spectrum, we run
+After running this script we then have
 
+```bash
+/study/
+├── run_study.slurm
+├── optdepth.slurm
+├── powspec_diff.slurm
+├── powspec_diff_combo.slurm
+├── clear_skewers.slurm
+├── clear_study.slurm
+├── PowerSpectraPlotsDir
+│   └── ...
+└── scriptlogs
+│   └── ...
+└── clearinglogs
+│   └── ...
 ```
-$ python powspec.py $SKEWERFILE $DLOGK -v -c
-```
 
-where 
+woah! What has been placed in this study directory? Well we have 6 slurm files:
 
-``$SKEWERFILE`` is the first positional argument - the skewer output file
-``$DLOGK`` is the second positional argument - the differential log-space bin size
-``-v`` flags the script to be verbose throughout the calculation
-``-c`` flags the script to save the averaged power spectrum along all three axes
+1. ``optdepth.slurm`` - calls optical depth calculation python script to add optical depths to skewer files
+2. ``powspec_diff.slurm`` - calls power spectra difference python script to plot the relative error of transmitted flux power spectrum
+3. ``powspecdiff_combo.slurm`` - calls power spectra difference combopython script to plot the relative error of transmitted flux power spectrum from different snapshot outputs
+4. ``run_study.slurm`` - submits previous 3 slurm files with appropriate dependencies
+5. ``clear_skewers.slurm`` - calls clear skewers python script to remove optical depths from skewer files, reset back to regular Cholla outputs
+6. ``clear_study.slurm`` - calls slurm script 5 and clears out the plots and script directories
+
+Well what will be in the three directories?
+
+1. ``scriptlogs`` - saves the outputs of how the optical depth was calculated and statistics of relative and absolute error
+2. ``PowerSpectraPlotsDir`` - saves individual and combined transmitted flux power spectra relative error without and with log-space
+3. ``clearinglogs`` - saves the outputs from clearing slurm files
+
+
+
 
 
 
