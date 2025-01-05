@@ -170,7 +170,7 @@ skewerFile="{skewers_DirPath}/"$SLURM_ARRAY_TASK_ID"_skewers.h5"
 
     bash_srun = f'''
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPath $skewerFile -v -r
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPath $skewerFile -v
 '''
 
     # combine text and write to file
