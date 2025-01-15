@@ -297,11 +297,7 @@ def clear_taucalc(OTFSkewers, verbose=False):
                         'taucalc_local_5sig', 'taucalc_local_8sig', 'taucalc_local_10sig',
                         'taucalc_local_allLOS', 'taucalc_time_1sig', 'taucalc_time_3sig',
                         'taucalc_time_5sig', 'taucalc_time_8sig', 'taucalc_time_10sig',
-                        'taucalc_time_allLOS',
-                        'taucalc_eff_fivesig', 'taucalc_local_fivesig', 'taucalc_time_fivesig',
-                        'taucalc_abserr_max', 'taucalc_abserr_mean', 'taucalc_abserr_median',
-                        'taucalc_abserr_std', 'taucalc_relerr_max', 'taucalc_relerr_mean', 
-                        'taucalc_relerr_median', 'taucalc_relerr_std']
+                        'taucalc_time_allLOS']
 
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+') as fObj:
         if verbose:
