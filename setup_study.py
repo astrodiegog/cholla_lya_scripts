@@ -626,14 +626,11 @@ def main():
     assert check_dirsNfiles(skewers_DirPath, analysis_DirPath, study_DirPath, nOutputs, args.verbose)
 
     # define scripts we are going to be using in slurm files, assume they're in same directory
-    optdepth_pyscript_fPath = Path("optdepth.py")
-    optdepth_pyscript_fPath = optdepth_pyscript_fPath.resolve()
-    powspecdiff_pyscript_fPath = Path("powspec_diff.py")
-    powspecdiff_pyscript_fPath = powspecdiff_pyscript_fPath.resolve()
-    powspec_combo_pyscript_fPath = Path("powspecdiff_all.py")
-    powspec_combo_pyscript_fPath = powspec_combo_pyscript_fPath.resolve()
-    clearskew_pyscript_fPath = Path("clear_skew.py")
-    clearskew_pyscript_fPath = clearskew_pyscript_fPath.resolve()
+    curr_pyscript_fPath = Path(__file__).parent.resolve()
+    optdepth_pyscript_fPath = curr_pyscript_fPath / "optdepth.py"
+    powspecdiff_pyscript_fPath = curr_pyscript_fPath / "powspec_diff.py"
+    powspec_combo_pyscript_fPath = curr_pyscript_fPath / "powspecdiff_all.py"
+    clearskew_pyscript_fPath = curr_pyscript_fPath / "clear_skew.py"
 
     # make sure all python scripts exist
     for pyscript_fPath in [optdepth_pyscript_fPath, powspecdiff_pyscript_fPath, powspec_combo_pyscript_fPath, clearskew_pyscript_fPath]:
