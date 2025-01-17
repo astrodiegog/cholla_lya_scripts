@@ -642,8 +642,8 @@ def main():
         Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')
 
     # get power spectra serving as our tests
-    opticaldepth_testkeys = ['taucalc_local_1sig', 'taucalc_local_3sig', 
-                         'taucalc_local_5sig', 'taucalc_local_8sig', 'taucalc_local_allLOS']
+    opticaldepth_testkeys = ['taucalc_local_3sig', 'taucalc_local_5sig', 'taucalc_local_8sig',
+                             'taucalc_local_10sig', 'taucalc_local_12sig', 'taucalc_local_allLOS']
 
     Pk_avg_tests = []
     testlabels = []
@@ -652,15 +652,17 @@ def main():
         Pk_avg_tests.append(Pk_avg)
 
         if (k == 0):
-            numsigma = 1
-        elif (k == 1):
             numsigma = 3
-        elif (k == 2):
+        elif (k == 1):
             numsigma = 5
-        elif (k == 3):
+        elif (k == 2):
             numsigma = 8
+        elif (k == 3):
+            numsigma = 10
+        elif (k == 4):
+            numsigma = 12
 
-        if (k < 4):
+        if (k < 5):
             labelstr = rf'${numsigma:.0f} - b$'
             testlabels.append(labelstr)
         else:

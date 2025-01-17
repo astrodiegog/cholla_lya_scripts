@@ -633,8 +633,8 @@ def main():
     all12_nOutput = np.reshape(all12_nOutput, (4,3))
 
     # define optical depth keys to test against
-    opticaldepth_testkeys = ['taucalc_local_1sig', 'taucalc_local_3sig',
-                         'taucalc_local_5sig', 'taucalc_local_8sig', 'taucalc_local_allLOS']
+    opticaldepth_testkeys = ['taucalc_local_3sig', 'taucalc_local_5sig', 'taucalc_local_8sig',
+                             'taucalc_local_10sig', 'taucalc_local_12sig', 'taucalc_local_allLOS']
 
     fig, ax_all = plt.subplots(nrows=4, ncols=3, figsize=(12,15))
     ax_flat = ax_all.flatten()
@@ -659,15 +659,17 @@ def main():
                 Pk_avg_tests.append(Pk_avg)
 
                 if (k == 0):
-                    numsigma = 1
-                elif (k == 1):
                     numsigma = 3
-                elif (k == 2):
+                elif (k == 1):
                     numsigma = 5
-                elif (k == 3):
+                elif (k == 2):
                     numsigma = 8
+                elif (k == 3):
+                    numsigma = 10
+                elif (k == 4):
+                    numsigma = 12
 
-                if (k < 4):
+                if (k < 5):
                     labelstr = rf'${numsigma:.0f} - b$'
                     testlabels.append(labelstr)
                 else:
