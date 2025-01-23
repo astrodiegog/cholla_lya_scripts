@@ -489,28 +489,13 @@ class ChollaSkewerCosmoCalculator:
         # initialize optical depths
         tau_ghost = self.snapCosmoCalc_ghost.create_arr()
 
-        if use_forloop:
-            # OLD IMPLEMENTATION
-            for losid in range(self.n_los_ghost):
-                vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
-                # calculate line center shift in terms of broadening scale
-                y_L = (vH_L - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
-                y_R = (vH_R - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
-                # [cm3 * # density] = [cm3 * cm-3] = []
-                tau_ghost[losid] = sigma_Lya * np.sum(nHI_phys_ghost_cgs * (erf(y_R) - erf(y_L))) / 2.0
-        else:
-            # NEW IMPLEMENTATION w/o for-loop, uses more memory
-            vHL_repeat = np.repeat(self.vHubbleL_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost))
-            vHR_repeat = np.repeat(self.vHubbleR_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost))
-
-            density_repeat = np.repeat(nHI_phys_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost)).T
-            vel_repeat = np.repeat(velocity_phys_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost)).T
-            doppler_repeat = np.repeat(doppler_param_ghost_cgs, self.n_los_ghost).reshape((self.n_los_ghost, self.n_los_ghost)).T
-
-            yL_all = (vHL_repeat - vel_repeat) / doppler_repeat
-            yR_all = (vHR_repeat - vel_repeat) / doppler_repeat
-
-            tau_ghost[:] = sigma_Lya * np.sum(density_repeat * (erf(yR_all) - erf(yL_all)), axis=1) / 2.0
+        for losid in range(self.n_los_ghost):
+            vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
+            # calculate line center shift in terms of broadening scale
+            y_L = (vH_L - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
+            y_R = (vH_R - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
+            # [cm3 * # density] = [cm3 * cm-3] = []
+            tau_ghost[losid] = sigma_Lya * np.sum(nHI_phys_ghost_cgs * (erf(y_R) - erf(y_L))) / 2.0
 
 
         # clip edges
