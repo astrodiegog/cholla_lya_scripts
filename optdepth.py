@@ -994,34 +994,6 @@ def main():
 
     precision = np.float64
     
-    _ = '''
-    # create set of all param values we are interested in saving
-    params2grab = {'nx', 'ny', 'nz', 'xmin', 'ymin', 'zmin', 'xlen', 'ylen', 'zlen',
-                    'H0', 'Omega_M', 'Omega_L', 'Omega_K', 'Omega_R', 'Omega_b', 'w0', 'wa',
-                    'analysis_scale_outputs_file', 'skewersdir', 'lya_skewers_stride'}
-
-    # read in params from param text file
-    params = {}
-    with open(args.param, 'r') as paramfile:
-        for line in paramfile:
-            # strip whitespace, then split by key-value pair assignment
-            keyval_str = '='
-            linesplit = line.strip().split(keyval_str)
-            is_keyvalpair = len(linesplit) == 2
-            if is_keyvalpair:
-                key_str, val_str = linesplit
-                if key_str in params2grab:
-                    params[key_str] = val_str
-
-    if len(params) != len(params2grab):
-        print(f'--- MISSING FOLLOWING PARAMS IN PARAM TXT FILE {args.param} ---')
-        for param in params2grab:
-            if param not in params.keys():
-                print('\t - ', param)
-        print('--- PLEASE FIX... EXITING ---')
-        exit()
-    '''
-
     # convert relative path to skewer file name to absolute file path
     cwd = os.getcwd()
     if args.skewfname[0] != '/':
