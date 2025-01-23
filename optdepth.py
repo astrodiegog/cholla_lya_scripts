@@ -669,15 +669,6 @@ class ChollaOnTheFlySkewers_i:
         self.OTFSkewersiHead = ChollaOTFSkewersiHead
         self.fPath = fPath
 
-        self.HI_str = 'HI_density'
-        self.HeII_str = 'HeII_density'
-        self.density_str = 'density'
-        self.vel_str = 'los_velocity'
-        self.temp_str = 'temperature'
-
-        self.allkeys = {self.HI_str, self.HeII_str, self.density_str,
-                        self.vel_str, self.temp_str}
-
     def get_skewer_obj(self, skewid):
         '''
         Return ChollaOnTheFlySkewer object of this analysis
