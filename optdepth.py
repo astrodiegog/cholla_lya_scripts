@@ -446,7 +446,7 @@ class ChollaSkewerCosmoCalculator:
 
         return arr_ghost
 
-    def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp, use_forloop=True):
+    def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp):
         '''
         Compute the optical depth for each cell along the line-of-sight
 
