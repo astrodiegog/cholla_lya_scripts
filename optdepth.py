@@ -126,28 +126,6 @@ class ChollaCosmologyHead:
         # critical density in units of [h2 Msun kpc-3]
         self.rho_crit0_cosmo = self.rho_crit0_cgs * (self.kpc3_cgs) / (self.Msun_cgs) / self.h_cosmo / self.h_cosmo
 
-        # Normalization factors from Cholla source code method Initialize_Cosmology. Not 100% sure what they mean
-        self.r0_gas = 1.0 # simulation ran with gas in [h-1 kpc] (???????)
-        self.t0_gas = self.t_H0_cosmo / self.h_cosmo
-        self.v0_gas = self.r0_gas / self.t0_gas
-        self.rho0_gas = self.rho_crit0_cosmo * self.OmegaM
-        self.phi0_gas = self.v0_gas * self.v0_gas  # energy units
-        self.e0_gas = self.v0_gas * self.v0_gas
-        self.p0_gas = self.rho0_gas * self.v0_gas * self.v0_gas # pressure units
-
-        # conversion factors between cosmo [kpc/km Msun kyr] and cgs [cm gram sec] units
-        # these factors DO NOT account for comoving units (ie, scale factor not incorporated)
-        # multiplying array (in cgs units) by array_cgs2cosmo provides array in cosmo units
-        # multiplying array (in cosmo units) by array_cosmo2cgs provides array in cgs units
-        self.density_cgs2cosmo = self.rho_crit0_cosmo # [h2 Msun kpc-3]
-        self.density_cosmo2cgs = 1. / self.density_cgs2cosmo
-
-        self.velocity_cgs2cosmo = self.km_cgs # [km s-1]
-        self.velocity_cosmo2cgs = 1. / self.velocity_cgs2cosmo
-
-        self.mom_cgs2cosmo = self.density_cgs2cosmo * self.km_cgs # [h2 Msun kpc-3  km s-1]
-        self.mom_cosmo2cgs = 1. / self.mom_cgs2cosmo
-
 
 class ChollaSnapCosmologyHead:
     '''
