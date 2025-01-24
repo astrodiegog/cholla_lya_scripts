@@ -1,5 +1,5 @@
 import argparse
-import os
+from pathlib import Path
 
 import numpy as np
 from scipy.special import erf
@@ -160,6 +160,60 @@ class ChollaFluxPowerSpectrumHead:
             fft_binids[:] = np.floor(fft_binids_float)
 
         return fft_binids
+
+    def get_FPS(self, local_opticaldepths, precision=np.float64):
+        '''
+        Return the Flux Power Spectrum given the local optical depths.
+            Expect 2-D array of shape (number skewers, line-of-sight cells)
+
+        Args:
+            local_opticaldepths (arr): local optical depths of all skewers
+            precision (np type): (optional) numpy precision to use
+        Return:
+            kmode_edges (arr): k mode edges array
+            P_k_mean (arr): mean transmitted flux power spectrum within kmode edges
+        '''
+        assert local_opticaldepths.ndim == 2
+        assert local_opticaldepths.shape[1] == self.n_los
+
+        n_skews = local_opticaldepths.shape[0]
+
+        # find the indices that describe where the k-mode FFT bins fall within kval_edges (from dlogk)
+        fft_binids = self.get_fft_binids(dtype_bin=np.int64, dtype_calc=np.float64)
+
+        # find number of fft modes that fall in requested dlogk bin id (used later to average total power in dlogk bin)
+        hist_n = np.zeros(self.n_bins, dtype=precision)
+        for bin_id in fft_binids[1:]:
+            hist_n[bin_id] += 1.
+        # (protect against dividing by zero)
+        hist_n[hist_n == 0] = 1.
+
+        # calculate local transmitted flux (& its mean)
+        fluxes = np.exp(-local_opticaldepths)
+        flux_mean = np.mean(fluxes)
+
+        # initialize total power array & temporary FFT array
+        hist_PS_vals = np.zeros(self.n_bins, dtype=precision)
+        P_k_tot = np.zeros(self.n_bins, dtype=precision)
+
+        for nSkewerID in range(n_skews):
+            # clean out temporary FFT array
+            hist_PS_vals[:] = 0.
+
+            # calculate flux fluctuation 
+            dFlux_skew = fluxes[nSkewerID] / flux_mean
+
+            # perform fft & calculate amplitude of fft
+            fft = np.fft.rfft(dFlux_skew)
+            fft2 = (fft.imag * fft.imag + fft.real * fft.real) / self.n_los / self.n_los
+
+            # add power for each fft mode
+            hist_PS_vals[fft_binids[1:]] += fft2[1:]
+
+            # take avg & scale by umax
+            delta_F_avg = hist_PS_vals / hist_n
+            P_k = self.u_max * delta_F_avg
+            P_k_tot += P_k
 
 
 
@@ -446,63 +500,6 @@ class ChollaOnTheFlySkewers:
 
         return OTFSkewerz
 
-    def get_FPS_i(self, OTFSkewers_i, FluxPowerSpectrumHead, precision=np.float64):
-        '''
-        Return the Flux Power Spectrum along the i-axis direction
-
-        Args:
-            OTFSkewers_i (ChollaOnTheFlySkewers_i): skewer object
-            FluxPowerSpectrumHead (ChollaFluxPowerSpectrumHead): power spectrum object
-            precision (np type): (optional) numpy precision to use
-        Return:
-            kmode_edges (arr): k mode edges array
-            P_k_mean (arr): mean transmitted flux power spectrum within kmode edges
-        '''
-        # find the indices that describe where the k-mode FFT bins fall within kval_edges (from dlogk)
-        fft_binids = FluxPowerSpectrumHead.get_fft_binids(dtype_bin=np.int64, dtype_calc=np.float64)
-        
-         # find number of fft modes that fall in requested dlogk bin id (used later to average total power in dlogk bin)
-        hist_n = np.zeros(FluxPowerSpectrumHead.n_bins, dtype=precision)
-        for bin_id in fft_binids[1:]:
-            hist_n[bin_id] += 1.
-        # (protect against dividing by zero)
-        hist_n[hist_n == 0] = 1.
-
-        # grab local optical depths
-        local_opticaldepth = OTFSkewers_i.get_alllocalopticaldepth(precision)
-
-        # calculate local transmitted flux (& its mean)
-        fluxes = np.exp(-local_opticaldepth)
-        flux_mean = np.mean(fluxes)
-    
-        # initialize total power array
-        P_k_tot = np.zeros(FluxPowerSpectrumHead.n_bins, dtype=precision)
-
-        for nSkewerID in range(OTFSkewers_i.OTFSkewersiHead.n_skews):
-            # calculate flux fluctuation 
-            dFlux_skew = fluxes[nSkewerID] / flux_mean
-
-            # calculate fft & amplitude of fft
-            fft = np.fft.rfft(dFlux_skew)
-            fft2 = (fft.imag * fft.imag + fft.real * fft.real) / FluxPowerSpectrumHead.n_los / FluxPowerSpectrumHead.n_los
-
-            # add power for each fft mode
-            hist_PS_vals = np.zeros(FluxPowerSpectrumHead.n_bins, dtype=precision)
-            hist_PS_vals[fft_binids[1:]] += fft2[1:]
-
-            # take avg & scale by umax
-            delta_F_avg = hist_PS_vals / hist_n
-            P_k = FluxPowerSpectrumHead.u_max * delta_F_avg
-            P_k_tot += P_k
-
-        # average out by the number of skewers
-        P_k_mean = P_k_tot / OTFSkewers_i.OTFSkewersiHead.n_skews
-
-        # grab k-mode bin edges
-        kmode_edges = FluxPowerSpectrumHead.get_kvals_edges(precision)
-
-        return (kmode_edges, P_k_mean)
-
     def get_FPS_x(self, dlogk, precision=np.float64):
         '''
         Return the Flux Power Spectrum along the x-axis
@@ -514,14 +511,17 @@ class ChollaOnTheFlySkewers:
             (arr): k mode edges array
             (arr): mean transmitted flux power spectrum within kmode edges
         '''
-        # create power spectrum object with x-axis geometry
-        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nx, self.dvHubble_x)
-        
         # grab x-skewer object
         OTFSkewers_x = self.get_skewersx_obj()
 
+        # grab local optical depths
+        local_opticaldepth = OTFSkewers_i.get_alllocalopticaldepth(precision)
+
+        # create power spectrum object with x-axis geometry
+        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nx, self.dvHubble_x)
+
         # return flux power spectrum along x-axis
-        return self.get_FPS_i(OTFSkewers_x, FluxPowerSpectrumHead, precision)
+        return self.get_FPS(local_opticaldepth, precision)
 
     def get_FPS_y(self, dlogk, precision=np.float64):
         '''
@@ -534,15 +534,17 @@ class ChollaOnTheFlySkewers:
             (arr): k mode edges array
             (arr): mean transmitted flux power spectrum within kmode edges
         '''
-        
-        # create power spectrum object with y-axis geometry
-        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.ny, self.dvHubble_y)
-        
         # grab y-skewer object
-        OTFSkewers_y = self.get_skewersy_obj()
+        OTFSkewers_y = self.get_skewersx_obj()
 
-        # return flux power spectrum along y-axis
-        return self.get_FPS_i(OTFSkewers_y, FluxPowerSpectrumHead, precision)
+        # grab local optical depths
+        local_opticaldepth = OTFSkewers_i.get_alllocalopticaldepth(precision)
+
+        # create power spectrum object with x-axis geometry
+        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.ny, self.dvHubble_y)
+
+        # return flux power spectrum along x-axis
+        return self.get_FPS(local_opticaldepth, precision)
 
     def get_FPS_z(self, dlogk, precision=np.float64):
         '''
@@ -555,17 +557,17 @@ class ChollaOnTheFlySkewers:
             (arr): k mode edges array
             (arr): mean transmitted flux power spectrum within kmode edges
         '''
-
-        # create power spectrum object with z-axis geometry
-        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nz, self.dvHubble_z)
-        
         # grab z-skewer object
-        OTFSkewers_z = self.get_skewersz_obj()
+        OTFSkewers_z = self.get_skewersx_obj()
 
-        # return flux power spectrum along z-axis
-        return self.get_FPS_i(OTFSkewers_z, FluxPowerSpectrumHead, precision)
+        # grab local optical depths
+        local_opticaldepth = OTFSkewers_i.get_alllocalopticaldepth(precision)
 
+        # create power spectrum object with x-axis geometry
+        FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nz, self.dvHubble_z)
 
+        # return flux power spectrum along x-axis
+        return self.get_FPS(local_opticaldepth, precision)
 
 
 
