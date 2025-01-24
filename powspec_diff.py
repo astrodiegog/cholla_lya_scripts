@@ -613,20 +613,6 @@ def main():
     # ensure dlogk is reasonable
     assert args.dlogk > 0
 
-    _ = '''# convert relative path to skewer file name to absolute file path
-    cwd = os.getcwd()
-    if args.skewfname[0] != '/':
-        relative_path = args.skewfname
-        args.skewfname = cwd + '/' + relative_path
-
-    # seperate the skewer output number and skewer directory
-    # save parent directory to get analysis directory too
-    skewfName = args.skewfname.split('/')[-1]
-    nSkewerOutput = int(skewfName.split('_')[0])
-    skewersdir = args.skewfname[:-(len(skewfName)+1)]
-    skewersdir_name = skewersdir.split('/')[-1]
-    parentdir = skewersdir[:-(len(skewersdir_name)+1)]
-    analysisdir = parentdir + '/analysis' '''
     skewer_fPath = Path(args.skewfname).resolve()
     analysis_fPath = Path(args.analysisfname).resolve()
     assert skewer_fPath.is_file()

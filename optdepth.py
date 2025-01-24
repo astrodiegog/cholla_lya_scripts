@@ -1212,20 +1212,6 @@ def main():
 
     precision = np.float64
 
-    
-    _ = '''
-    # convert relative path to skewer file name to absolute file path
-    cwd = os.getcwd()
-    if args.skewfname[0] != '/':
-        relative_path = args.skewfname
-        args.skewfname = cwd + '/' + relative_path
-
-    # seperate the skewer output number and skewer directory
-    skewfName = args.skewfname.split('/')[-1]
-    nSkewerOutput = int(skewfName.split('_')[0])
-    skewersdir = args.skewfname[:-(len(skewfName)+1)] '''
-
-
     # Convert argument input to Path() & get its absolute path
     skewer_fPath = Path(args.skewfname).resolve()
     assert skewer_fPath.is_file()
