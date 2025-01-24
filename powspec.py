@@ -696,30 +696,20 @@ def main():
 
     precision = np.float64
 
+    skewer_fPath = Path(args.skewfname).resolve()
+
     # ensure that local optical depth is a dataset
-    fObj = h5py.File(args.skewfname, 'r')
-    local_opticaldepth_key = 'taucalc_local'
-    assert local_opticaldepth_key in fObj['skewers_x'].keys()
-    assert local_opticaldepth_key in fObj['skewers_y'].keys()
-    assert local_opticaldepth_key in fObj['skewers_z'].keys()
-    fObj.close()
+    with h5py.File(skewer_fPath, 'r') as fObj:    
+        local_opticaldepth_key = 'taucalc_local'
+        assert local_opticaldepth_key in fObj['skewers_x'].keys()
+        assert local_opticaldepth_key in fObj['skewers_y'].keys()
+        assert local_opticaldepth_key in fObj['skewers_z'].keys()
 
     # ensure dlogk is reasonable
     assert args.dlogk > 0
 
-    # convert relative path to skewer file name to absolute file path
-    cwd = os.getcwd()
-    if args.skewfname[0] != '/':
-        relative_path = args.skewfname
-        args.skewfname = cwd + '/' + relative_path
-
-    # seperate the skewer output number and skewer directory
-    skewfName = args.skewfname.split('/')[-1]
-    nSkewerOutput = int(skewfName.split('_')[0])
-    skewersdir = args.skewfname[:-(len(skewfName)+1)]
-
     # create ChollaOTFSkewers object
-    OTFSkewers = ChollaOnTheFlySkewers(nSkewerOutput, skewersdir)
+    OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
 
     # calculate the power spectra
     P_k_calc(OTFSkewers, args.dlogk, args.combine, args.verbose, precision=np.float64)
