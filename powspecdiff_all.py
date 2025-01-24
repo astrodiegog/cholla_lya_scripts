@@ -651,9 +651,6 @@ def main():
 
             analysis_fPath = analysis_dirPath / Path(analysisfname)
             skewer_fPath = skewer_dirPath / Path(skewersfname)
-            print(analysis_dirPath)
-            print(analysis_fPath)
-            print(skewer_fPath)
             assert analysis_fPath.is_file()
             assert skewer_fPath.is_file()
 
