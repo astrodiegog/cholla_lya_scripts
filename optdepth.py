@@ -1,5 +1,5 @@
 import argparse
-import os
+from pathlib import Path
 
 from time import time
 
@@ -561,14 +561,15 @@ class ChollaOnTheFlySkewer:
         Initialized with:
         - ChollaOTFSkewerHead (ChollaOnTheFlySkewerHead): header
             information associated with skewer
-        - fPath (str): file path to skewers output
+        - fPath (PosixPath): file path to skewers output
 
     Values are returned in code units unless otherwise specified.
     '''
 
     def __init__(self, ChollaOTFSkewerHead, fPath):
         self.OTFSkewerHead = ChollaOTFSkewerHead
-        self.fPath = fPath
+        self.fPath = fPath.resolve() # convert to absolute path
+        assert self.fPath.is_file() # make sure file exists
 
         self.HI_str = 'HI_density'
         self.HeII_str = 'HeII_density'
@@ -605,9 +606,8 @@ class ChollaOnTheFlySkewer:
         assert self.check_datakey(key)
 
         arr = np.zeros(self.OTFSkewerHead.n_i, dtype=dtype)
-        fObj = h5py.File(self.fPath, 'r')
-        arr[:] = fObj[self.OTFSkewerHead.skew_key].get(key)[self.OTFSkewerHead.skew_id, :]
-        fObj.close()
+        with h5py.File(self.fPath, 'r') as fObj:
+            arr[:] = fObj[self.OTFSkewerHead.skew_key].get(key)[self.OTFSkewerHead.skew_id, :]
 
         return arr
 
@@ -682,14 +682,15 @@ class ChollaOnTheFlySkewers_i:
         Initialized with:
         - ChollaOTFSkewersiHead (ChollaOnTheFlySkewers_iHead): header
             information associated with skewer
-        - fPath (str): file path to skewers output
+        - fPath (PosixPath): file path to skewers output
 
     Values are returned in code units unless otherwise specified.
     '''
 
     def __init__(self, ChollaOTFSkewersiHead, fPath):
         self.OTFSkewersiHead = ChollaOTFSkewersiHead
-        self.fPath = fPath
+        self.fPath = fPath.resolve() # convert to absolute path
+        assert self.fPath.is_file() # make sure file exists
 
     def get_skewer_obj(self, skewid):
         '''
@@ -714,15 +715,14 @@ class ChollaOnTheFlySkewers:
             create specific skewer objects
 
         Initialized with:
-        - nSkewer (nSkewer): number of the skewer output
-        - SkewersPath (str): directory path to skewer output files
-        - ChollaGrid (ChollaGrid): grid holding domain information
+        - fPath (PosixPath): file path to skewers output        
 
     Values are returned in code units unless otherwise specified.
     '''
 
-    def __init__(self, nSkewer, SkewersPath):
-        self.OTFSkewersfPath = SkewersPath + '/' + str(nSkewer) + '_skewers.h5'
+    def __init__(self, fPath):
+        self.OTFSkewersfPath = fPath.resolve() # convert to absolute path
+        assert self.OTFSkewersfPath.is_file() # make sure file exists
 
         self.xskew_str = "skewers_x"
         self.yskew_str = "skewers_y"
@@ -762,18 +762,14 @@ class ChollaOnTheFlySkewers:
         Returns:
             ...
         '''
+        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+            # grab length of box in units of [kpc]
+            Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
 
-        fObj = h5py.File(self.OTFSkewersfPath, 'r')
-
-        # grab length of box in units of [kpc]
-        Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
-
-        # set number of skewers and stride number along each direction 
-        nskewersx, self.nx = fObj[self.xskew_str][datalength_str].shape
-        nskewersy, self.ny = fObj[self.yskew_str][datalength_str].shape
-        nskewersz, self.nz = fObj[self.zskew_str][datalength_str].shape
-
-        fObj.close()
+            # set number of skewers and stride number along each direction 
+            nskewersx, self.nx = fObj[self.xskew_str][datalength_str].shape
+            nskewersy, self.ny = fObj[self.yskew_str][datalength_str].shape
+            nskewersz, self.nz = fObj[self.zskew_str][datalength_str].shape
 
         # we know nskewers_i = (nj * nk) / (nstride_i * nstride_i)
         # so nstride_i = sqrt( (nj * nk) / (nskewers_i) )
@@ -786,6 +782,8 @@ class ChollaOnTheFlySkewers:
         self.dy = Ly / self.ny
         self.dz = Lz / self.nz
 
+        return
+
 
     def set_cosmoinfo(self):
         '''
@@ -797,21 +795,20 @@ class ChollaOnTheFlySkewers:
             ...
         '''
 
-        fObj = h5py.File(self.OTFSkewersfPath, 'r')
+        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+            self.Omega_R = fObj.attrs['Omega_R'].item()
+            self.Omega_M = fObj.attrs['Omega_M'].item()
+            self.Omega_L = fObj.attrs['Omega_L'].item()
+            self.Omega_K = fObj.attrs['Omega_K'].item()
 
-        self.Omega_R = fObj.attrs['Omega_R'].item()
-        self.Omega_M = fObj.attrs['Omega_M'].item()
-        self.Omega_L = fObj.attrs['Omega_L'].item()
-        self.Omega_K = fObj.attrs['Omega_K'].item()
+            self.w0 = fObj.attrs['w0'].item()
+            self.wa = fObj.attrs['wa'].item()
 
-        self.w0 = fObj.attrs['w0'].item()
-        self.wa = fObj.attrs['wa'].item()
-
-        self.H0 = fObj.attrs['H0'].item() # expected in km/s/Mpc
-        self.current_a = fObj.attrs['current_a'].item()
-        self.current_z = fObj.attrs['current_z'].item()
-
-        fObj.close()
+            self.H0 = fObj.attrs['H0'].item() # expected in km/s/Mpc
+            self.current_a = fObj.attrs['current_a'].item()
+            self.current_z = fObj.attrs['current_z'].item()
+        
+        return
 
     def get_currH(self):
         '''
@@ -1215,6 +1212,8 @@ def main():
 
     precision = np.float64
 
+    
+    _ = '''
     # convert relative path to skewer file name to absolute file path
     cwd = os.getcwd()
     if args.skewfname[0] != '/':
@@ -1224,10 +1223,19 @@ def main():
     # seperate the skewer output number and skewer directory
     skewfName = args.skewfname.split('/')[-1]
     nSkewerOutput = int(skewfName.split('_')[0])
-    skewersdir = args.skewfname[:-(len(skewfName)+1)]
+    skewersdir = args.skewfname[:-(len(skewfName)+1)] '''
+
+
+    # Convert argument input to Path() & get its absolute path
+    skewer_fPath = Path(args.skewfname).resolve()
+    assert skewer_fPath.is_file()
+
+    # Grab the integer skewer output
+    nSkewerOutput = int(skewer_fPath.stem.split('_')[0])
 
     # create ChollaOTFSkewers object
-    OTFSkewers = ChollaOnTheFlySkewers(nSkewerOutput, skewersdir)
+    #OTFSkewers = ChollaOnTheFlySkewers(nSkewerOutput, skewersdir)
+    OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
 
     # add progress attribute, boolean mask for whether tau is calculated, and tau itself
     init_taucalc(OTFSkewers, args.restart, args.verbose)

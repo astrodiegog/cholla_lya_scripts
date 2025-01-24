@@ -1,5 +1,5 @@
 import argparse
-import os
+from pathlib import Path
 
 import numpy as np
 import h5py
@@ -283,14 +283,15 @@ class ChollaOnTheFlySkewers_i:
         Initialized with:
         - ChollaOTFSkewersiHead (ChollaOnTheFlySkewers_iHead): header
             information associated with skewer
-        - fPath (str): file path to skewers output
+        - fPath (PosixPath): file path to skewers output
 
     Values are returned in code units unless otherwise specified.
     '''
 
     def __init__(self, ChollaOTFSkewersiHead, fPath):
         self.OTFSkewersiHead = ChollaOTFSkewersiHead
-        self.fPath = fPath
+        self.fPath = fPath.resolve() # convert to absolute path
+        assert self.fPath.is_file() # make sure file exists
 
     def get_skewer_obj(self, skewid):
         '''
@@ -315,15 +316,14 @@ class ChollaOnTheFlySkewers:
             create specific skewer objects
 
         Initialized with:
-        - nSkewer (nSkewer): number of the skewer output
-        - SkewersPath (str): directory path to skewer output files
-        - ChollaGrid (ChollaGrid): grid holding domain information
+        - fPath (PosixPath): file path to skewers output
 
     Values are returned in code units unless otherwise specified.
     '''
 
-    def __init__(self, nSkewer, SkewersPath):
-        self.OTFSkewersfPath = SkewersPath + '/' + str(nSkewer) + '_skewers.h5'
+    def __init__(self, fPath):
+        self.OTFSkewersfPath = fPath.resolve() # convert to absolute path
+        assert self.OTFSkewersfPath.is_file() # make sure file exists
 
         self.xskew_str = "skewers_x"
         self.yskew_str = "skewers_y"
@@ -364,17 +364,15 @@ class ChollaOnTheFlySkewers:
             ...
         '''
 
-        fObj = h5py.File(self.OTFSkewersfPath, 'r')
+        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+            # grab length of box in units of [kpc]
+            Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
 
-        # grab length of box in units of [kpc]
-        Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
+            # set number of skewers and stride number along each direction 
+            nskewersx, self.nx = fObj[self.xskew_str][datalength_str].shape
+            nskewersy, self.ny = fObj[self.yskew_str][datalength_str].shape
+            nskewersz, self.nz = fObj[self.zskew_str][datalength_str].shape
 
-        # set number of skewers and stride number along each direction 
-        nskewersx, self.nx = fObj[self.xskew_str][datalength_str].shape
-        nskewersy, self.ny = fObj[self.yskew_str][datalength_str].shape
-        nskewersz, self.nz = fObj[self.zskew_str][datalength_str].shape
-
-        fObj.close()
 
         # we know nskewers_i = (nj * nk) / (nstride_i * nstride_i)
         # so nstride_i = sqrt( (nj * nk) / (nskewers_i) )
@@ -387,6 +385,7 @@ class ChollaOnTheFlySkewers:
         self.dy = Ly / self.ny
         self.dz = Lz / self.nz
 
+        return
 
     def set_cosmoinfo(self):
         '''
@@ -398,21 +397,20 @@ class ChollaOnTheFlySkewers:
             ...
         '''
 
-        fObj = h5py.File(self.OTFSkewersfPath, 'r')
+        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+            self.Omega_R = fObj.attrs['Omega_R'].item()
+            self.Omega_M = fObj.attrs['Omega_M'].item()
+            self.Omega_L = fObj.attrs['Omega_L'].item()
+            self.Omega_K = fObj.attrs['Omega_K'].item()
 
-        self.Omega_R = fObj.attrs['Omega_R'].item()
-        self.Omega_M = fObj.attrs['Omega_M'].item()
-        self.Omega_L = fObj.attrs['Omega_L'].item()
-        self.Omega_K = fObj.attrs['Omega_K'].item()
+            self.w0 = fObj.attrs['w0'].item()
+            self.wa = fObj.attrs['wa'].item()
 
-        self.w0 = fObj.attrs['w0'].item()
-        self.wa = fObj.attrs['wa'].item()
+            self.H0 = fObj.attrs['H0'].item() # expected in km/s/Mpc
+            self.current_a = fObj.attrs['current_a'].item()
+            self.current_z = fObj.attrs['current_z'].item()
 
-        self.H0 = fObj.attrs['H0'].item() # expected in km/s/Mpc
-        self.current_a = fObj.attrs['current_a'].item()
-        self.current_z = fObj.attrs['current_z'].item()
-
-        fObj.close()
+        return
 
     def get_currH(self):
         '''
@@ -625,6 +623,13 @@ def main():
     # ensure dlogk is reasonable
     assert args.dlogk > 0
 
+    # make sure directories exist
+    skewer_dirPath = Path(args.skewdirname).resolve()
+    analysis_dirPath = Path(args.analysisdirname).resolve()
+    assert skewer_dirPath.is_dir()
+    assert analysis_dirPath.is_dir()
+
+
     all12_nOutput = np.zeros(12, dtype=np.int64)
     all12_nOutput[0], all12_nOutput[1], all12_nOutput[2] = args.nOutput1, args.nOutput2, args.nOutput3
     all12_nOutput[3], all12_nOutput[4], all12_nOutput[5] = args.nOutput4, args.nOutput5, args.nOutput6
@@ -641,15 +646,24 @@ def main():
 
     for i, row_nOutputs in enumerate(all12_nOutput):
         for j, nOutput in enumerate(row_nOutputs):
-            analysisfname = args.analysisdirname + f"/{nOutput:.0f}_analysis.h5"
-            OTFSkewers = ChollaOnTheFlySkewers(nOutput, args.skewdirname)
+            analysisfname = f"{nOutput:.0f}_analysis.h5"
+            skewersfname = f"{nOutput:.0f}_skewers.h5"            
+
+            analysis_fPath = analysis_dirPath / Path(analysisfname)
+            skewer_fPath = skewer_dirPath / Path(skewersfname)
+            print(analysis_dirPath)
+            print(analysis_fPath)
+            print(skewer_fPath)
+            assert analysis_fPath.is_file()
+            assert skewer_fPath.is_file()
+
+            OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
             ax = ax_all[i][j]    
 
             # get power spectra we're using to compare against
-            # assume analysis and skewers have the same parent directory
-            with h5py.File(analysisfname, 'r') as fObj_analysis:
-                fObj_analysis = h5py.File(analysisfname, 'r')
-                Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')
+            Pk_analysis = np.array([])
+            with h5py.File(analysis_fPath, 'r') as fObj_analysis:
+                Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')[:]
 
 
             Pk_avg_tests = []
@@ -710,11 +724,6 @@ def main():
     _ = plt.subplots_adjust(left=0.1)
 
     # saving time !
-    if args.outdir:
-        outdir = args.outdir
-    else:
-        cwd = os.getcwd()
-        outdir = cwd
     if args.fname:
         fName = args.fname
     else:
@@ -722,22 +731,30 @@ def main():
             fName = f'PowerSpectraLogDiff_ALL.png'
         else:
             fName = f'PowerSpectraDiff_ALL.png'
+    img_fPath = Path(fName)
+
+    if args.outdir:
+        outdir_dirPath = Path(args.outdir)
+        outdir_dirPath = outdir_dirPath.resolve()
+        assert outdir_dirPath.is_dir()
+    else:
+        outdir_dirPath = Path.cwd()
+    img_fPath = outdir_dirPath / img_fPath
 
     if args.verbose:
         if args.outdir:
-            print(f"--- We are placing the output file in : {outdir} ---")
+            print(f"--- We are placing the output file in : {outdir_dirPath} ---")
         else:
-            print(f"--- No output directory specified, so placing image in CWD: {outdir} ---")
+            print(f"--- No output directory specified, so placing image in CWD: {outdir_dirPath} ---")
 
         if args.fname:
             print(f"--- We are saving the plot with file name : {fName} ---")
         else:
             print(f"--- No output file name specified, so it will be named : {fName} ---")
 
-    fImgPath = outdir + "/" + fName
-    fig.savefig(fImgPath, dpi=256)
-    plt.close(fig)
 
+    _ = fig.savefig(img_fPath, dpi=256, bbox_inches = "tight")
+    plt.close(fig)
 
         
 
