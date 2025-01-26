@@ -161,7 +161,7 @@ class ChollaFluxPowerSpectrumHead:
 
         return fft_binids
 
-    def get_FPS(self, local_opticaldepths, precision=np.float64, updated=False):
+    def get_FPS(self, local_opticaldepths, precision=np.float64, updated_deltaFcalc=False):
         '''
         Return the Flux Power Spectrum given the local optical depths.
             Expect 2-D array of shape (number skewers, line-of-sight cells)
@@ -203,7 +203,7 @@ class ChollaFluxPowerSpectrumHead:
             hist_PS_vals[:] = 0.
 
             # calculate flux fluctuation 
-            if updated:
+            if updated_deltaFcalc:
                 dFlux_skew = (fluxes[nSkewerID] - flux_mean) / flux_mean
             else:
                 dFlux_skew = fluxes[nSkewerID] / flux_mean
@@ -508,13 +508,15 @@ class ChollaOnTheFlySkewers:
 
         return OTFSkewerz
 
-    def get_FPS_x(self, dlogk, precision=np.float64):
+    def get_FPS_x(self, dlogk, precision=np.float64, updated_deltaFcalc=False):
         '''
         Return the Flux Power Spectrum along the x-axis
 
         Args:
             dlogk (float): differential step in log k-space
             precision (np type): (optional) numpy precision to use
+            updated_deltaFcalc (bool): (optional) whether to calculate delta F 
+                by subtracting mean
         Return:
             (arr): k mode edges array
             (arr): mean transmitted flux power spectrum within kmode edges
@@ -529,15 +531,17 @@ class ChollaOnTheFlySkewers:
         FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nx, self.dvHubble_x)
 
         # return flux power spectrum along x-axis
-        return self.get_FPS(local_opticaldepth, precision)
+        return self.get_FPS(local_opticaldepth, precision, updated_deltaFcalc)
 
-    def get_FPS_y(self, dlogk, precision=np.float64):
+    def get_FPS_y(self, dlogk, precision=np.float64, updated_deltaFcalc=False):
         '''
         Return the Flux Power Spectrum along the y-axis
 
         Args:
             dlogk (float): differential step in log k-space
             precision (np type): (optional) numpy precision to use
+            updated_deltaFcalc (bool): (optional) whether to calculate delta F 
+                by subtracting mean
         Return:
             (arr): k mode edges array
             (arr): mean transmitted flux power spectrum within kmode edges
@@ -552,15 +556,17 @@ class ChollaOnTheFlySkewers:
         FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.ny, self.dvHubble_y)
 
         # return flux power spectrum along x-axis
-        return self.get_FPS(local_opticaldepth, precision)
+        return self.get_FPS(local_opticaldepth, precision, updated_deltaFcalc)
 
-    def get_FPS_z(self, dlogk, precision=np.float64):
+    def get_FPS_z(self, dlogk, precision=np.float64, updated_deltaFcalc=False):
         '''
         Return the Flux Power Spectrum along the z-axis
 
         Args:
             dlogk (float): differential step in log k-space
             precision (np type): (optional) numpy precision to use
+            updated_deltaFcalc (bool): (optional) whether to calculate delta F 
+                by subtracting mean
         Return:
             (arr): k mode edges array
             (arr): mean transmitted flux power spectrum within kmode edges
@@ -575,11 +581,11 @@ class ChollaOnTheFlySkewers:
         FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nz, self.dvHubble_z)
 
         # return flux power spectrum along x-axis
-        return self.get_FPS(local_opticaldepth, precision)
+        return self.get_FPS(local_opticaldepth, precision, updated_deltaFcalc)
 
 
 
-def P_k_calc(OTFSkewers, dlogk, combine=True, verbose=False, precision=np.float64):
+def P_k_calc(OTFSkewers, dlogk, combine=True, verbose=False, precision=np.float64, updated_deltaFcalc=False):
     '''
     Calculate the mean transmitted flux power spectrum along each axis and save
         onto skewer output file
@@ -590,17 +596,22 @@ def P_k_calc(OTFSkewers, dlogk, combine=True, verbose=False, precision=np.float6
         combine (bool): (optional) whether to combine power spectrum from each axis
         verbose (bool): (optional) whether to print important information
         precision (np type): (optional) numpy precision to use in calculations
+        updated_deltaFcalc (bool): (optional) whether to calculate delta F 
+                by subtracting mean
     Returns:
         ...
     '''
 
-    k_x, P_k_x = OTFSkewers.get_FPS_x(dlogk, precision)
-    k_y, P_k_y = OTFSkewers.get_FPS_y(dlogk, precision)
-    k_z, P_k_z = OTFSkewers.get_FPS_z(dlogk, precision)
+    k_x, P_k_x = OTFSkewers.get_FPS_x(dlogk, precision, updated_deltaFcalc)
+    k_y, P_k_y = OTFSkewers.get_FPS_y(dlogk, precision, updated_deltaFcalc)
+    k_z, P_k_z = OTFSkewers.get_FPS_z(dlogk, precision, updated_deltaFcalc)
 
     # open file and append each power spectrum as new "PowerSpectrum" group
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+') as fObj:
-        PS_group_key = 'PowerSpectrum'
+        if updated_deltaFcalc:
+            PS_group_key = 'PowerSpectrum_newDeltaFCalc'
+        else:
+            PS_group_key = 'PowerSpectrum'
         if PS_group_key not in fObj.keys():
             if verbose:
                 print(f'\t...initializing power spectrum group for file {OTFSkewers.OTFSkewersfPath}')
@@ -719,8 +730,9 @@ def main():
     # create ChollaOTFSkewers object
     OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
 
-    # calculate the power spectra
+    # calculate the power spectra with both methods
     P_k_calc(OTFSkewers, args.dlogk, args.combine, args.verbose, precision=np.float64)
+    P_k_calc(OTFSkewers, args.dlogk, args.combine, args.verbose, precision=np.float64, updated_deltaFcalc=True)
 
 
 
