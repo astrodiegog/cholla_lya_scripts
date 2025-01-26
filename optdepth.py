@@ -971,6 +971,38 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False, lo
     return
 
 
+def print_info(OTFSkewers):
+    '''
+    Print out relevant information for this study that was calculated
+
+    Args:
+        OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
+    Returns:
+        ...
+    '''
+
+    print(f'Info regarding the skewers measured at redshift = {OTFSkewers.current_z:.4f}')
+    print('We are showing the Mean +/- Standard deviation for statistics measured comparing')
+    print('\t line of sight calculation methods')
+
+    OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(), OTFSkewers.get_skewersy_obj(),
+                      OTFSkewers.get_skewersz_obj()]
+
+
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r') as fObj:
+        for OTFSkewers_i in OTFSkewers_lst:
+            print('Looking at ', OTFSkewers_i.OTFSkewersiHead.skew_key)
+
+            # grab data
+            tau_eff = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_eff')[:]
+            tau_local = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_local')[:]
+            flux_local = np.exp(-tau_local.flatten())
+
+            flux_mean, flux_std = np.mean(flux_local), np.std(flux_local)
+
+            print(f'\t Mean flux: {flux_mean:.4e} +/- {flux_std:.4e}')
+
+
 
 def main():
     '''
