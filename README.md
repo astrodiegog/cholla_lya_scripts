@@ -32,3 +32,34 @@ $$
     \Delta_F^2 (k) = \frac{1}{\pi} k P(k)
 $$
 
+
+However, the problem is that in the subroutine ``Grid3D::Compute_Flux_Power_Spectrum_Skewer``, the flux deviation from the mean is calculated as
+
+```cpp
+delta_F[los_id] = skewers_transmitted_flux[skewer_id * n_los + los_id] / Analysis.Flux_mean_HI;
+```
+
+The array is filled up in the subroutine ``Grid3D::Compute_Transmitted_Flux_Skewer``, as the following 
+
+```cpp
+skewers_transmitted_flux_HI[skewer_id * n_los_total + los_id]   = exp(-full_optical_depth_HI[los_id + n_ghost]);
+```
+
+So from my interpretation, this reads as
+
+$$
+    \delta_F (u) = \frac{F(u)}{\bar{F}}
+$$
+
+which doesn't sound right. So far in my python scripts, I have been doing the same thing... something something, if it aint broke... But I just noticed how this may be effecting the transmitted flux power spectrum. 
+
+The goal of this study is to document the difference that results from this change from the input into the FFT. The output will be three plots:
+
+1. Dimensionles transmitted flux power spectra $\Delta_F^2 (k)$
+2. Relative error of transmitted flux power spectra with respect to analysis output $\Delta_F^2 (k)$
+3. Absolute relative error of transmitted flux power spectra with respect to analysis output $\Delta_F^2 (k)$ in logspace
+
+
+
+
+
