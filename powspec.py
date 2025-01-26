@@ -204,8 +204,12 @@ class ChollaFluxPowerSpectrumHead:
 
             # calculate flux fluctuation 
             if updated_deltaFcalc:
+                if nSkewerID==0:
+                    print('power calc updated version!')
                 dFlux_skew = (fluxes[nSkewerID] - flux_mean) / flux_mean
             else:
+                if nSkewerID==0:
+                    print('power calc old version!')
                 dFlux_skew = fluxes[nSkewerID] / flux_mean
 
             # perform fft & calculate amplitude of fft
@@ -509,6 +513,7 @@ class ChollaOnTheFlySkewers:
 
         return OTFSkewerz
 
+
     def get_FPS_x(self, dlogk, precision=np.float64, updated_deltaFcalc=False):
         '''
         Return the Flux Power Spectrum along the x-axis
@@ -548,7 +553,7 @@ class ChollaOnTheFlySkewers:
             (arr): mean transmitted flux power spectrum within kmode edges
         '''
         # grab y-skewer object
-        OTFSkewers_y = self.get_skewersx_obj()
+        OTFSkewers_y = self.get_skewersy_obj()
 
         # grab local optical depths
         local_opticaldepth = OTFSkewers_y.get_alllocalopticaldepth(precision)
@@ -573,7 +578,7 @@ class ChollaOnTheFlySkewers:
             (arr): mean transmitted flux power spectrum within kmode edges
         '''
         # grab z-skewer object
-        OTFSkewers_z = self.get_skewersx_obj()
+        OTFSkewers_z = self.get_skewersz_obj()
 
         # grab local optical depths
         local_opticaldepth = OTFSkewers_z.get_alllocalopticaldepth(precision)

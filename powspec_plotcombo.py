@@ -93,7 +93,7 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
         delta2F = (1. / np.pi) * k_model * Pk_avg
 
         # no nans here !
-        goodDelta2F = ~np.isnan(delta2F)
+        goodDelta2F = (~np.isnan(delta2F)) & (~(delta2F == 0))
         _ = ax.plot(k_model[goodDelta2F], delta2F[goodDelta2F], label=label)
 
     # plase labels & limits if not already set
@@ -103,7 +103,7 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
     _ = ax.set_xlabel(xlabel_str)
     _ = ax.set_ylabel(ylabel_str)
 
-    ylow, yupp = 1e-3, 1e0
+    ylow, yupp = 1e-4, 1e0
     _ = ax.set_ylim(ylow, yupp)
     _ = ax.set_yscale('log')
 
@@ -159,10 +159,10 @@ def plotFluxPowerSpectra_RelDiff(ax, k_model, Pk_model, Pk_tests, label_tests, l
 
     # add y limits
     if log:
-        ylow, yupp = 1e-6, 1e-1
+        ylow, yupp = 1e-8, 1e-2
         _ = ax.set_yscale('log')
     else:
-        ylow, yupp = -0.1, 0.1
+        ylow, yupp = -0.01, 0.01
     _ = ax.set_ylim(ylow, yupp)
 
     # add x lims
@@ -296,11 +296,11 @@ def main():
             x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
             if args.difference:
                 if args.logspace:
-                    y_redshift = 3.e-6
+                    y_redshift = 3.e-8
                 else:
-                    y_redshift = -0.080
+                    y_redshift = -0.0080
             else:
-                y_redshift = 3.e-3
+                y_redshift = 3.e-4
             _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
 
     # tighten layout, add space for y-label

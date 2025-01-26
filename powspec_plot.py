@@ -65,7 +65,7 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
         ...
     '''
     # make sure we have one label for each FPS
-    assert len(Pk_avgs) == len(label)
+    assert len(Pk_avgs) == len(labels)
     # make sure all power spectra are of the same size
     for Pk_avg in Pk_avgs:
         assert k_model.size == Pk_avg.size
@@ -76,8 +76,8 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
         delta2F = (1. / np.pi) * k_model * Pk_avg
 
         # no nans here !
-        goodDelta2F = ~np.isnan(delta2F)
-        _ = ax.plot(k_model[goodDelta2F], delta2F_fracdiff[goodDelta2F], label=label)
+        goodDelta2F = (~np.isnan(delta2F)) & (~(delta2F == 0))
+        _ = ax.plot(k_model[goodDelta2F], delta2F[goodDelta2F], label=label)
 
     # plase labels & limits if not already set
     xlabel_str = r'$k\ [\rm{s\ km^{-1}}] $'
@@ -86,9 +86,9 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
     _ = ax.set_xlabel(xlabel_str)
     _ = ax.set_ylabel(ylabel_str)
 
-    #ylow, yupp = 1e-6, 1e-1
-    #_ = ax.set_ylim(ylow, yupp)
-    #_ = ax.set_yscale('log')
+    ylow, yupp = 1e-4, 1e0
+    _ = ax.set_ylim(ylow, yupp)
+    _ = ax.set_yscale('log')
 
     # add x lims
     xlow, xupp = 1e-3, 5e-2
@@ -151,11 +151,11 @@ def plotFluxPowerSpectra_RelDiff(ax, k_model, Pk_model, Pk_tests, label_tests, l
     _ = ax.set_ylabel(ylabel_str)
 
     if log:
-        ylow, yupp = 1e-6, 1e-1
+        ylow, yupp = 1e-8, 1e-2
         _ = ax.set_ylim(ylow, yupp)
         _ = ax.set_yscale('log')
     else:
-        ylow, yupp = -0.1, 0.1
+        ylow, yupp = -0.01, 0.01
         _ = ax.set_ylim(ylow, yupp)
 
     # add x lims
@@ -244,11 +244,11 @@ def main():
     x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
     if args.difference:
         if args.logspace:
-            y_redshift = 3.e-6
+            y_redshift = 3.e-8
         else:
             y_redshift = -0.080
     else:
-        y_redshift = 3.e-3
+        y_redshift = 3.e-4
 
     _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
     
