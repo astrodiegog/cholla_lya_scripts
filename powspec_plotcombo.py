@@ -83,14 +83,10 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
         ...
     '''
     # make sure we have one label for each FPS
-    assert len(Pk_tests) == len(label_tests)
+    assert len(Pk_avgs) == len(labels)
     # make sure all power spectra are of the same size
-    for Pk_test in Pk_tests:
-        assert k_model.size == Pk_test.size
-    assert k_model.size == Pk_model.size
-
-    # calculate dimensionless model flux power spectra to compare against
-    delta2F_model = (1. / np.pi) * k_model * Pk_model
+    for Pk_avg in Pk_avgs:
+        assert k_model.size == Pk_avg.size
 
     for i, Pk_avg in enumerate(Pk_avgs):
         label = labels[i]
@@ -98,7 +94,7 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
 
         # no nans here !
         goodDelta2F = ~np.isnan(delta2F)
-        _ = ax.plot(k_model[goodDelta2F], delta2F_fracdiff[goodDelta2F], label=label)
+        _ = ax.plot(k_model[goodDelta2F], delta2F[goodDelta2F], label=label)
 
     # plase labels & limits if not already set
     xlabel_str = r'$k\ [\rm{s\ km^{-1}}] $'
@@ -210,9 +206,6 @@ def main():
 
     precision = np.float64
 
-    # ensure dlogk is reasonable
-    assert args.dlogk > 0
-
     # make sure directories exist
     skewer_dirPath = Path(args.skewdirname).resolve()
     analysis_dirPath = Path(args.analysisdirname).resolve()
@@ -247,8 +240,8 @@ def main():
             ax = ax_all[i][j]    
 
             # get power spectra from analysis path
-            k_skew = np.array(_)
-            Pk_analysis = np.array(_)
+            k_skew = np.array([])
+            Pk_analysis = np.array([])
             current_z_analysis = 0.
             with h5py.File(analysis_fPath, 'r') as fObj_analysis:
                 Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')[:]
@@ -256,8 +249,8 @@ def main():
                 current_z_analysis = fObj_analysis.attrs['current_z'].item()
 
             # get power spectra we calculated
-            Pk_avg = np.array(_)
-            Pk_avg_newDeltaFCalc = np.array(_)
+            Pk_avg = np.array([])
+            Pk_avg_newDeltaFCalc = np.array([])
             current_z = 0.
             with h5py.File(skewer_fPath, 'r') as fObj_skewer:
                 Pk_avg = fObj_skewer['PowerSpectrum'].get('P(k)')[:]
@@ -283,7 +276,7 @@ def main():
                 xlabel_str = None
                 _ = ax.tick_params(labelbottom=False)
             if (j == 0):
-                if args.differense:
+                if args.difference:
                     if args.logspace:
                         ylabel_str = r'$| D [ \Delta_F^2 (k) ] |$'
                     else:
@@ -303,11 +296,11 @@ def main():
             x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
             if args.difference:
                 if args.logspace:
-                    y_redshift = 1.e-6
+                    y_redshift = 3.e-6
                 else:
                     y_redshift = -0.080
             else:
-                y_redshift = 1.e-3
+                y_redshift = 3.e-3
             _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
 
     # tighten layout, add space for y-label

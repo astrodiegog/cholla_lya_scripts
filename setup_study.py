@@ -138,8 +138,8 @@ def create_optdepth_slurm(optdepth_pyscript_fPath, optdepth_slurm_fPath, skewers
 
     bash_header = f'''#!/bin/bash
 #SBATCH --job-name={studyName}-opticaldepth      # Job name
-#SBATCH --partition=cpuq # Partition name
-#SBATCH --account=cpuq   # Account name
+#SBATCH --partition=gpuq # Partition name
+#SBATCH --account=gpuq   # Account name
 #SBATCH --exclusive             # Exclusive use of the node
 #SBATCH --ntasks=1              # Number of MPI ranks
 #SBATCH --array={array_str}            # Array of job ids
@@ -213,8 +213,8 @@ def create_powspec_slurm(powspeccalc_pyscript_fPath, powspecplot_pyscript_fPath,
 
     bash_header = f'''#!/bin/bash
 #SBATCH --job-name={studyName}-powspec      # Job name
-#SBATCH --partition=cpuq                    # Partition name
-#SBATCH --account=cpuq                      # Account name
+#SBATCH --partition=gpuq                    # Partition name
+#SBATCH --account=gpuq                      # Account name
 #SBATCH --exclusive                         # Exclusive use of the node
 #SBATCH --ntasks=1                          # Number of MPI ranks
 #SBATCH --array={array_str}                 # Array of job ids
@@ -279,17 +279,17 @@ dlogk={dlogk}
 
 srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptCalcPath $skewerFile $dlogk -v -c
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v -o $outDir -f $fname
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v -d
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v -d -o $outDirDiff -f $fnameDiff
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v -d -l
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v -d -l -o $outDirDiffLog -f $fnameDiffLog
 
 
 '''
 
     # combine text and write to file
-    bash_txt = bash_header + bash_load + bash_scriptnfiles + bash_srun
+    bash_txt = bash_header + bash_load + bash_scriptnfiles + bash_outdirsnfnames + bash_srun
     with powspec_slurm_fPath.open('w') as slurmfile:
         slurmfile.write(bash_txt)
 
@@ -329,8 +329,8 @@ def create_powspecplotcombo_slurm(powspeccombo_pyscript_fPath, powspeccombo_slur
 
     bash_header = f'''#!/bin/bash
 #SBATCH --job-name={studyName}-powspecplot-combo      # Job name
-#SBATCH --partition=cpuq                              # Partition name
-#SBATCH --account=cpuq                                # Account name
+#SBATCH --partition=gpuq                              # Partition name
+#SBATCH --account=gpuq                                # Account name
 #SBATCH --exclusive                                   # Exclusive use of the node
 #SBATCH --ntasks=1                                    # Number of MPI ranks
 #SBATCH --time=24:00:00                               # Time limit (hh:mm:ss)
@@ -352,7 +352,7 @@ module list
 '''
 
     bash_script = f'''
-scriptPath="{powspecplotcombo_pyscript_fPath}"
+scriptPath="{powspeccombo_pyscript_fPath}"
 
 skewersDir="{skewers_DirPath}"
 analysisDir="{analysis_DirPath}"
@@ -688,7 +688,7 @@ def main():
 
     # create the power spectra slurm file
     powspec_slurm_fPath = study_DirPath / "powspec.slurm"
-    create_powspecplot_slurm(powspec_pyscript_fPath, powspec_plot_pyscript_fPath, powspec_slurm_fPath, args.dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, args.verbose)
+    create_powspec_slurm(powspec_calc_pyscript_fPath, powspec_plot_pyscript_fPath, powspec_slurm_fPath, args.dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, args.verbose)
 
     # create the power spectra combination slurm file
     powspec_combo_slurm_fPath = study_DirPath / "powspec_combo.slurm"

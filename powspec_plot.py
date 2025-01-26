@@ -65,14 +65,11 @@ def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
         ...
     '''
     # make sure we have one label for each FPS
-    assert len(Pk_tests) == len(label_tests)
+    assert len(Pk_avgs) == len(label)
     # make sure all power spectra are of the same size
-    for Pk_test in Pk_tests:
-        assert k_model.size == Pk_test.size
-    assert k_model.size == Pk_model.size
+    for Pk_avg in Pk_avgs:
+        assert k_model.size == Pk_avg.size
 
-    # calculate dimensionless model flux power spectra to compare against
-    delta2F_model = (1. / np.pi) * k_model * Pk_model
 
     for i, Pk_avg in enumerate(Pk_avgs):
         label = labels[i]
@@ -204,17 +201,14 @@ def main():
 
     precision = np.float64
 
-    # ensure dlogk is reasonable
-    assert args.dlogk > 0
-
     skewer_fPath = Path(args.skewfname).resolve()
     analysis_fPath = Path(args.analysisfname).resolve()
     assert skewer_fPath.is_file()
     assert analysis_fPath.is_file()    
 
     # get power spectra from analysis path
-    k_skew = np.array(_)
-    Pk_analysis = np.array(_)
+    k_skew = np.array([])
+    Pk_analysis = np.array([])
     current_z_analysis = 0.
     with h5py.File(analysis_fPath, 'r') as fObj_analysis:
         Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')[:]
@@ -222,8 +216,8 @@ def main():
         current_z_analysis = fObj_analysis.attrs['current_z'].item()
 
     # get power spectra we calculated
-    Pk_avg = np.array(_)
-    Pk_avg_newDeltaFCalc = np.array(_)
+    Pk_avg = np.array([])
+    Pk_avg_newDeltaFCalc = np.array([])
     current_z = 0.
     with h5py.File(skewer_fPath, 'r') as fObj_skewer:
         Pk_avg = fObj_skewer['PowerSpectrum'].get('P(k)')[:] 
@@ -254,7 +248,7 @@ def main():
         else:
             y_redshift = -0.080
     else:
-        y_redshift = ????????
+        y_redshift = 3.e-3
 
     _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
     
