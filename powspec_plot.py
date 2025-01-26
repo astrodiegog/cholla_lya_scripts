@@ -52,7 +52,7 @@ def create_parser():
 # Study specific functions
 ###
 
-def plotFluxPowerSpectra_RelDiff(ax, k_model, Pk_avgs, labels):
+def plotFluxPowerSpectra(ax, k_model, Pk_avgs, labels):
     '''
     Plot the relative difference of a set of flux power spectra
     
