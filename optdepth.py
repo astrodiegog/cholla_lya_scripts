@@ -999,9 +999,13 @@ def print_info(OTFSkewers):
             flux_local = np.exp(-tau_local.flatten())
 
             flux_mean, flux_std = np.mean(flux_local), np.std(flux_local)
+            taueff_mean, taueff_std = np.mean(tau_eff), np.std(tau_eff)
 
             print(f'\t Mean flux: {flux_mean:.4e} +/- {flux_std:.4e}')
+            print(f'\t Mean effective optical depth: {taueff_mean:.4e} +/- {taueff_std:.4e}')
+            print(12*'---', '\n')
 
+    return
 
 
 def main():
@@ -1066,6 +1070,7 @@ def main():
         taucalc(OTFSkewers_i, skewCosmoCalc, precision, args.verbose, args.local)
 
 
+    print_info(OTFSkewers)
         
 
 if __name__=="__main__":
