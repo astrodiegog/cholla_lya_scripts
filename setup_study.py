@@ -301,14 +301,13 @@ srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq
 
 
 
-def create_powspecplotcombo_slurm(powspecdiffcombo_pyscript_fPath, powspecdiffcombo_slurm_fPath, dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, verbose=False):
+def create_powspecplotcombo_slurm(powspeccombo_pyscript_fPath, powspeccombo_slurm_fPath, dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, verbose=False):
     '''
-    Create powspecdiff_combo.slurm file that will complete the optical depth calculations
+    Create powspec_combo.slurm file that will plot the flux power spectrum combined
 
     Args:
-        powspecdiffcombo_pyscript_fPath (Path): path to power spectra difference plotting script
-        powspecdiffcombo_slurm_fPath (Path): path to place power spectra difference combination slurm file
-        dlogk (float): differential step in log k-space
+        powspecplotcombo_pyscript_fPath (Path): path to combined power spectra plotting script
+        powspecplotcombo_slurm_fPath (Path): path to place combined power spectra plotting slurm file
         skewers_DirPath (Path): path to directory holding skewer files
         analysis_DirPath (Path): path to directory holding analysis files
         scriptlog_DirPath (Path): path to where logs for job will reside
@@ -329,13 +328,13 @@ def create_powspecplotcombo_slurm(powspecdiffcombo_pyscript_fPath, powspecdiffco
     array_str = np.array2string(nOutputs, separator=' ')[2:-1]
 
     bash_header = f'''#!/bin/bash
-#SBATCH --job-name={studyName}-powspecdiff-combo      # Job name
-#SBATCH --partition=cpuq # Partition name
-#SBATCH --account=cpuq   # Account name
-#SBATCH --exclusive             # Exclusive use of the node
-#SBATCH --ntasks=1              # Number of MPI ranks
-#SBATCH --time=24:00:00         # Time limit (hh:mm:ss)
-#SBATCH --output={scriptlog_DirPath}/powspecdiff_combo_%j.log     # Standard output and error log
+#SBATCH --job-name={studyName}-powspecplot-combo      # Job name
+#SBATCH --partition=cpuq                              # Partition name
+#SBATCH --account=cpuq                                # Account name
+#SBATCH --exclusive                                   # Exclusive use of the node
+#SBATCH --ntasks=1                                    # Number of MPI ranks
+#SBATCH --time=24:00:00                               # Time limit (hh:mm:ss)
+#SBATCH --output={scriptlog_DirPath}/powspecplot_combo_%j.log     # Standard output and error log
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
@@ -350,11 +349,10 @@ module load python miniforge
 
 module list
 
-source activate /data/users/digarza/myconda_envs/cholla_analysis/
 '''
 
     bash_script = f'''
-scriptPath="{powspecdiffcombo_pyscript_fPath}"
+scriptPath="{powspecplotcombo_pyscript_fPath}"
 
 skewersDir="{skewers_DirPath}"
 analysisDir="{analysis_DirPath}"
@@ -365,27 +363,30 @@ analysisDir="{analysis_DirPath}"
 plotsDir="{plots_DirPath}"
 
 outDir=$plotsDir
-fname="PowerSpectraDiff_ALL.png"
-fnameLog="PowerSpectraLogDiff_ALL.png"
+
+fname="PowerSpectra_Combo.png"
+fnameDiff="PowerSpectraDiff_Combo.png"
+fnameDiffLog="PowerSpectraLogDiff_Combo.png"
 '''
 
     bash_srun = f'''
-dlogk={dlogk}
 nOutputStr="{array_str}"
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPath $skewersDir $analysisDir $dlogk $nOutputStr -v -o $outDir -f $fname
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPath $skewersDir $analysisDir $nOutputStr -v -o $outDir -f $fname
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPath $skewersDir $analysisDir $dlogk $nOutputStr -v -l -o $outDir -f $fnameLog
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPath $skewersDir $analysisDir $nOutputStr -v -d -o $outDir -f $fnameDiff
+
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPath $skewersDir $analysisDir $nOutputStr -v -d -l -o $outDir -f $fnameDiffLog
 
 '''
 
     # combine text and write to file
     bash_txt = bash_header + bash_load + bash_script + bash_outdirsnfnames + bash_srun
-    with powspecdiffcombo_slurm_fPath.open('w') as slurmfile:
+    with powspecplotcombo_slurm_fPath.open('w') as slurmfile:
         slurmfile.write(bash_txt)
 
     if verbose:
-        print(f"\t --- Woo hoo! We now have power spectra difference plotting combined slurm file : {powspecdiffcombo_slurm_fPath} ---")
+        print(f"\t --- Woo hoo! We now have power spectra difference plotting combined slurm file : {powspecplotcombo_slurm_fPath} ---")
 
     return
 
