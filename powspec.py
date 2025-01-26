@@ -161,7 +161,7 @@ class ChollaFluxPowerSpectrumHead:
 
         return fft_binids
 
-    def get_FPS(self, local_opticaldepths, precision=np.float64):
+    def get_FPS(self, local_opticaldepths, precision=np.float64, updated=False):
         '''
         Return the Flux Power Spectrum given the local optical depths.
             Expect 2-D array of shape (number skewers, line-of-sight cells)
@@ -169,6 +169,8 @@ class ChollaFluxPowerSpectrumHead:
         Args:
             local_opticaldepths (arr): local optical depths of all skewers
             precision (np type): (optional) numpy precision to use
+            updated_deltaFcalc (bool): (optional) whether to calculate delta F 
+                by subtracting mean
         Return:
             kmode_edges (arr): k mode edges array
             P_k_mean (arr): mean transmitted flux power spectrum within kmode edges
@@ -201,7 +203,10 @@ class ChollaFluxPowerSpectrumHead:
             hist_PS_vals[:] = 0.
 
             # calculate flux fluctuation 
-            dFlux_skew = fluxes[nSkewerID] / flux_mean
+            if updated:
+                dFlux_skew = (fluxes[nSkewerID] - flux_mean) / flux_mean
+            else:
+                dFlux_skew = fluxes[nSkewerID] / flux_mean
 
             # perform fft & calculate amplitude of fft
             fft = np.fft.rfft(dFlux_skew)
@@ -214,6 +219,9 @@ class ChollaFluxPowerSpectrumHead:
             delta_F_avg = hist_PS_vals / hist_n
             P_k = self.u_max * delta_F_avg
             P_k_tot += P_k
+
+
+
 
 
 
