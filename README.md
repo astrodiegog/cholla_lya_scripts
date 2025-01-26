@@ -56,8 +56,8 @@ which doesn't sound right. So far in my python scripts, I have been doing the sa
 The goal of this study is to document the difference that results from this change from the input into the FFT. The output will be three plots:
 
 1. Dimensionles transmitted flux power spectra $\Delta_F^2 (k)$
-2. Relative error of transmitted flux power spectra with respect to analysis output $\Delta_F^2 (k)$
-3. Absolute relative error of transmitted flux power spectra with respect to analysis output $\Delta_F^2 (k)$ in logspace
+2. Relative error of transmitted flux power spectra with respect to analysis output $| \Delta_F^2 (k) |$
+3. Absolute relative error of transmitted flux power spectra with respect to analysis output $| D [\Delta_F^2 (k) ] |$ in logspace
 
 
 
