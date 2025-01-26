@@ -277,13 +277,13 @@ fi
     bash_srun = f'''
 dlogk={dlogk}
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptCalcPath $skewerFile $analysisFile $dlogk -v
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptCalcPath $skewerFile $dlogk -v -c
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile $dlogk -v
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile $dlogk -v -d
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v -d
 
-srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile $dlogk -v -d -l
+srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq python3 $scriptPlotPath $skewerFile $analysisFile -v -d -l
 
 
 '''
