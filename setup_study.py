@@ -301,13 +301,13 @@ srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq
 
 
 
-def create_powspecplotcombo_slurm(powspeccombo_pyscript_fPath, powspeccombo_slurm_fPath, dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, verbose=False):
+def create_powspecplotcombo_slurm(powspeccombo_pyscript_fPath, powspeccombo_slurm_fPath, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, verbose=False):
     '''
     Create powspec_combo.slurm file that will plot the flux power spectrum combined
 
     Args:
         powspecplotcombo_pyscript_fPath (Path): path to combined power spectra plotting script
-        powspecplotcombo_slurm_fPath (Path): path to place combined power spectra plotting slurm file
+        powspeccombo_slurm_fPath (Path): path to place combined power spectra plotting slurm file
         skewers_DirPath (Path): path to directory holding skewer files
         analysis_DirPath (Path): path to directory holding analysis files
         scriptlog_DirPath (Path): path to where logs for job will reside
@@ -382,7 +382,7 @@ srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq
 
     # combine text and write to file
     bash_txt = bash_header + bash_load + bash_script + bash_outdirsnfnames + bash_srun
-    with powspecplotcombo_slurm_fPath.open('w') as slurmfile:
+    with powspeccombo_slurm_fPath.open('w') as slurmfile:
         slurmfile.write(bash_txt)
 
     if verbose:
@@ -391,15 +391,15 @@ srun -N 1 -n 1 -c 1 --cpu-bind=cores --exclusive --partition=cpuq --account=cpuq
     return
 
 
-def create_runstudy_slurm(runstudy_slurm_fPath, optdepth_slurm_fPath, powspecdiff_slurm_fPath, powspecdiffcombo_slurm_fPath, scriptlog_DirPath, studyName, verbose=False):
+def create_runstudy_slurm(runstudy_slurm_fPath, optdepth_slurm_fPath, powspec_slurm_fPath, powspeccombo_slurm_fPath, scriptlog_DirPath, studyName, verbose=False):
     '''
     Create run_study.slurm file that will submit all required jobs
 
     Args:
         runstudy_slurmPath (Path): path to place study running slurm file
         optdepth_slurm_fPath (Path): path to optical depth slurm file
-        powspecdiff_slurm_fPath (Path): path to power spectra difference slurm file
-        powspecdiffcombo_slurmPath (Path): path to power spectra difference combination slurm file
+        powspec_slurm_fPath (Path): path to power spectra calculation and plotting slurm file
+        powspeccombo_slurmPath (Path): path to combined power spectra plotting slurm file
         scriptlog_DirPath (Path): path to where logs for job will reside
         studyName (str): name to prepend job-name
         verbose (bool): (optional) whether to print important information
@@ -434,18 +434,18 @@ module list
 
     bash_sbatch = f'''
 optDepthJob="{optdepth_slurm_fPath}"
-powSpecDiffJob="{powspecdiff_slurm_fPath}"
-powSpecDiffComboJob="{powspecdiffcombo_slurm_fPath}"
+powSpecJob="{powspec_slurm_fPath}"
+powSpecComboJob="{powspeccombo_slurm_fPath}"
 
 job_id=$(sbatch --parsable $optDepthJob)
 
 echo "Submitted optical depth job "$job_id
 
-job_id2=$(sbatch --parsable -d afterok:$job_id $powSpecDiffJob)
+job_id2=$(sbatch --parsable -d afterok:$job_id $powSpecJob)
 
 echo "Submitted power spectra job "$job_id2
 
-job_id3=$(sbatch --parsable -d afterok:$job_id $powSpecDiffComboJob)
+job_id3=$(sbatch --parsable -d afterok:$job_id2 $powSpecComboJob)
 
 echo "Submitted power spectra combo job "$job_id3
 '''
@@ -632,7 +632,7 @@ def main():
     if args.name_study:
         studyName = args.name_study
     else:
-        studyName = args.studyDir.split('/')[-1] 
+        studyName = study_DirPath.parent.name
         if args.verbose:
             print(f"--- Name for study was not specified, using study directory : {studyName} ---")
 
@@ -649,12 +649,15 @@ def main():
     # define scripts we are going to be using in slurm files, assume they're in same directory
     curr_pyscript_fPath = Path(__file__).parent.resolve()
     optdepth_pyscript_fPath = curr_pyscript_fPath / "optdepth.py"
-    powspecdiff_pyscript_fPath = curr_pyscript_fPath / "powspec_diff.py"
-    powspec_combo_pyscript_fPath = curr_pyscript_fPath / "powspecdiff_all.py"
+    powspec_calc_pyscript_fPath = curr_pyscript_fPath / "powspec.py"
+    powspec_plot_pyscript_fPath = curr_pyscript_fPath / "powspec_plot.py"
+    powspec_plotcombo_pyscript_fPath = curr_pyscript_fPath / "powspec_plotcombo.py"
     clearskew_pyscript_fPath = curr_pyscript_fPath / "clear_skew.py"
 
     # make sure all python scripts exist
-    for pyscript_fPath in [optdepth_pyscript_fPath, powspecdiff_pyscript_fPath, powspec_combo_pyscript_fPath, clearskew_pyscript_fPath]:
+    pyscript_fPaths = [optdepth_pyscript_fPath, powspec_calc_pyscript_fPath, powspec_plot_pyscript_fPath,
+                powspec_plotcombo_pyscript_fPath, clearskew_pyscript_fPath]
+    for pyscript_fPath in pyscript_fPaths:
         print(f"--- Making sure python script exists : {pyscript_fPath}---")
         assert pyscript_fPath.is_file()
 
@@ -674,7 +677,7 @@ def main():
         print(f"--- Directory holding clearing log files already created ---")
 
     # create plots directory
-    plots_DirPath = study_DirPath / "PowerSpectraPlotsDiff"
+    plots_DirPath = study_DirPath / "PowerSpectraPlots"
     if plots_DirPath.is_dir() and args.verbose:
         print(f"--- Directory holding plots of power spectra differences already created - Please remove : {plots_DirPath} ---")
     plots_DirPath.mkdir(parents=False, exist_ok=False)
@@ -684,19 +687,19 @@ def main():
     create_optdepth_slurm(optdepth_pyscript_fPath, optdepth_slurm_fPath, skewers_DirPath, scriptlog_DirPath, studyName, nOutputs, args.verbose)
 
     # create the power spectra slurm file
-    powspecdiff_slurm_fPath = study_DirPath / "powspec_diff.slurm"
-    create_powspecplot_slurm(powspecdiff_pyscript_fPath, powspecdiff_slurm_fPath, args.dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, args.verbose)
+    powspec_slurm_fPath = study_DirPath / "powspec.slurm"
+    create_powspecplot_slurm(powspec_pyscript_fPath, powspec_plot_pyscript_fPath, powspec_slurm_fPath, args.dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputs, args.verbose)
 
     # create the power spectra combination slurm file
-    powspecdiff_combo_slurm_fPath = study_DirPath / "powspec_diff_combo.slurm"
+    powspec_combo_slurm_fPath = study_DirPath / "powspec_combo.slurm"
     # define outputs to include in combo & make sure they're subset of input
     nOutputsCombo = np.array([8,9,10,11,12,13,14,15,16,17,18,19], dtype=np.int64)
     assert set(nOutputsCombo).issubset(nOutputs)
-    create_powspecplotcombo_slurm(powspec_combo_pyscript_fPath, powspecdiff_combo_slurm_fPath, args.dlogk, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputsCombo, args.verbose)
+    create_powspecplotcombo_slurm(powspec_plotcombo_pyscript_fPath, powspec_combo_slurm_fPath, skewers_DirPath, analysis_DirPath, scriptlog_DirPath, plots_DirPath, studyName, nOutputsCombo, args.verbose)
 
     # create final run all scripts slurm file
     runstudy_slurm_fPath = study_DirPath / "run_study.slurm"
-    create_runstudy_slurm(runstudy_slurm_fPath, optdepth_slurm_fPath, powspecdiff_slurm_fPath, powspecdiff_combo_slurm_fPath, scriptlog_DirPath, studyName, args.verbose)
+    create_runstudy_slurm(runstudy_slurm_fPath, optdepth_slurm_fPath, powspec_slurm_fPath, powspec_combo_slurm_fPath, scriptlog_DirPath, studyName, args.verbose)
 
     # create slurm file to clear out all optical depth datasets added to skewers
     clearskewers_slurm_fPath = study_DirPath / "clear_skewers.slurm"
