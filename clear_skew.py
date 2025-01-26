@@ -287,11 +287,11 @@ def clear_taucalc(OTFSkewers, verbose=False):
     '''
 
     attrs2remove = ['taucalc_prog']
-    datasets2remove = ['taucalc_bool', 'taucalc_eff_3sig', 'taucalc_eff_5sig',
+    datasets2remove = ['taucalc_bool', 'taucalc_eff_1sig', 'taucalc_eff_3sig', 'taucalc_eff_5sig',
                         'taucalc_eff_8sig', 'taucalc_eff_10sig', 'taucalc_eff_12sig',
-                        'taucalc_eff_allLOS', 'taucalc_local_3sig', 'taucalc_local_5sig',
+                        'taucalc_eff_allLOS', 'taucalc_local_1sig', 'taucalc_local_3sig', 'taucalc_local_5sig',
                         'taucalc_local_8sig', 'taucalc_local_10sig', 'taucalc_local_12sig',
-                        'taucalc_local_allLOS', 'taucalc_time_3sig', 'taucalc_time_5sig',
+                        'taucalc_local_allLOS', 'taucalc_time_1sig', 'taucalc_time_3sig', 'taucalc_time_5sig',
                         'taucalc_time_8sig', 'taucalc_time_10sig', 'taucalc_time_12sig',
                         'taucalc_time_allLOS']
 
