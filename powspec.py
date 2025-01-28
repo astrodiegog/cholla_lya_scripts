@@ -255,14 +255,16 @@ class ChollaOnTheFlySkewers_i:
         Initialized with:
         - ChollaOTFSkewersiHead (ChollaOnTheFlySkewers_iHead): header
             information associated with skewer
-        - fPath (str): file path to skewers output
+        - fPath (PosixPath): file path to skewers output
 
     Values are returned in code units unless otherwise specified.
     '''
 
     def __init__(self, ChollaOTFSkewersiHead, fPath):
         self.OTFSkewersiHead = ChollaOTFSkewersiHead
-        self.fPath = fPath
+        self.fPath = fPath.resolve() # convert to absolute path
+        assert self.fPath.is_file() # make sure file exists
+
         self.HI_str = 'HI_density'
         self.HeII_str = 'HeII_density'
         self.density_str = 'density'
@@ -331,14 +333,14 @@ class ChollaOnTheFlySkewers:
             create specific skewer objects
 
         Initialized with:
-        - nSkewer (nSkewer): number of the skewer output
-        - SkewersPath (str): directory path to skewer output files
+        - fPath (PosixPath): file path to skewers output
 
     Values are returned in code units unless otherwise specified.
     '''
 
-    def __init__(self, nSkewer, SkewersPath):
-        self.OTFSkewersfPath = SkewersPath + '/' + str(nSkewer) + '_skewers.h5'
+    def __init__(self, fPath):
+        self.OTFSkewersfPath = fPath.resolve() # convert to absolute path
+        assert self.OTFSkewersfPath.is_file() # make sure file exists
 
         self.xskew_str = "skewers_x"
         self.yskew_str = "skewers_y"
@@ -379,17 +381,16 @@ class ChollaOnTheFlySkewers:
             ...
         '''
 
-        fObj = h5py.File(self.OTFSkewersfPath, 'r')
 
-        # grab length of box in units of [kpc]
-        Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
+        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+            # grab length of box in units of [kpc]
+            Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
 
-        # set number of skewers and stride number along each direction 
-        nskewersx, self.nx = fObj[self.xskew_str][datalength_str].shape
-        nskewersy, self.ny = fObj[self.yskew_str][datalength_str].shape
-        nskewersz, self.nz = fObj[self.zskew_str][datalength_str].shape
+            # set number of skewers and stride number along each direction 
+            nskewersx, self.nx = fObj[self.xskew_str][datalength_str].shape
+            nskewersy, self.ny = fObj[self.yskew_str][datalength_str].shape
+            nskewersz, self.nz = fObj[self.zskew_str][datalength_str].shape
 
-        fObj.close()
 
         # we know nskewers_i = (nj * nk) / (nstride_i * nstride_i)
         # so nstride_i = sqrt( (nj * nk) / (nskewers_i) )
@@ -401,6 +402,8 @@ class ChollaOnTheFlySkewers:
         self.dx = Lx / self.nx
         self.dy = Ly / self.ny
         self.dz = Lz / self.nz
+        
+        return
 
     def set_cosmoinfo(self):
         '''
@@ -412,21 +415,20 @@ class ChollaOnTheFlySkewers:
             ...
         '''
 
-        fObj = h5py.File(self.OTFSkewersfPath, 'r')
+        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+            self.Omega_R = fObj.attrs['Omega_R'].item()
+            self.Omega_M = fObj.attrs['Omega_M'].item()
+            self.Omega_L = fObj.attrs['Omega_L'].item()
+            self.Omega_K = fObj.attrs['Omega_K'].item()
 
-        self.Omega_R = fObj.attrs['Omega_R'].item()
-        self.Omega_M = fObj.attrs['Omega_M'].item()
-        self.Omega_L = fObj.attrs['Omega_L'].item()
-        self.Omega_K = fObj.attrs['Omega_K'].item()
+            self.w0 = fObj.attrs['w0'].item()
+            self.wa = fObj.attrs['wa'].item()
 
-        self.w0 = fObj.attrs['w0'].item()
-        self.wa = fObj.attrs['wa'].item()
+            self.H0 = fObj.attrs['H0'].item() # expected in km/s/Mpc
+            self.current_a = fObj.attrs['current_a'].item()
+            self.current_z = fObj.attrs['current_z'].item()
 
-        self.H0 = fObj.attrs['H0'].item() # expected in km/s/Mpc
-        self.current_a = fObj.attrs['current_a'].item()
-        self.current_z = fObj.attrs['current_z'].item()
-
-        fObj.close()
+        return
 
     def get_currH(self):
         '''
@@ -521,7 +523,7 @@ class ChollaOnTheFlySkewers:
         FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nx, self.dvHubble_x)
 
         # return flux power spectrum along x-axis
-        return self.get_FPS(local_opticaldepth, precision)
+        return FluxPowerSpectrumHead.get_FPS(local_opticaldepth, precision)
 
     def get_FPS_y(self, dlogk, precision=np.float64):
         '''
@@ -535,16 +537,16 @@ class ChollaOnTheFlySkewers:
             (arr): mean transmitted flux power spectrum within kmode edges
         '''
         # grab y-skewer object
-        OTFSkewers_y = self.get_skewersx_obj()
+        OTFSkewers_y = self.get_skewersy_obj()
 
         # grab local optical depths
         local_opticaldepth = OTFSkewers_i.get_alllocalopticaldepth(precision)
 
-        # create power spectrum object with x-axis geometry
+        # create power spectrum object with y-axis geometry
         FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.ny, self.dvHubble_y)
 
-        # return flux power spectrum along x-axis
-        return self.get_FPS(local_opticaldepth, precision)
+        # return flux power spectrum along y-axis
+        return FluxPowerSpectrumHead.get_FPS(local_opticaldepth, precision)
 
     def get_FPS_z(self, dlogk, precision=np.float64):
         '''
@@ -558,16 +560,16 @@ class ChollaOnTheFlySkewers:
             (arr): mean transmitted flux power spectrum within kmode edges
         '''
         # grab z-skewer object
-        OTFSkewers_z = self.get_skewersx_obj()
+        OTFSkewers_z = self.get_skewersz_obj()
 
         # grab local optical depths
         local_opticaldepth = OTFSkewers_i.get_alllocalopticaldepth(precision)
 
-        # create power spectrum object with x-axis geometry
+        # create power spectrum object with y-axis geometry
         FluxPowerSpectrumHead = ChollaFluxPowerSpectrumHead(dlogk, self.nz, self.dvHubble_z)
 
-        # return flux power spectrum along x-axis
-        return self.get_FPS(local_opticaldepth, precision)
+        # return flux power spectrum along z-axis
+        return FluxPowerSpectrumHead.get_FPS(local_opticaldepth, precision)
 
 
 
