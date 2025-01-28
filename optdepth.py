@@ -549,14 +549,23 @@ class ChollaOnTheFlySkewer:
         self.fPath = fPath.resolve() # convert to absolute path
         assert self.fPath.is_file() # make sure file exists
 
-        self.HI_str = 'HI_density'
-        self.HeII_str = 'HeII_density'
-        self.density_str = 'density'
-        self.vel_str = 'los_velocity'
-        self.temp_str = 'temperature'
+        self.set_keys() # set possible skewer keys
 
-        self.allkeys = {self.HI_str, self.HeII_str, self.density_str,
-                        self.vel_str, self.temp_str}
+
+    def set_keys(self):
+        '''
+        Check skewer group to set the available keys
+
+        Args:
+            ...
+        Returns:
+            ...
+        '''
+        
+        with h5py.File(self.fPath, 'r') as fObj:
+            self.allkeys = set(fObj[self.OTFSkewerHead.skew_key].keys())
+
+        return
 
     def check_datakey(self, data_key):
         '''
