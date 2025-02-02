@@ -1062,7 +1062,10 @@ def main():
         tau_local_x = OTFSkewers_x.get_skeweralldata('taucalc_local', dtype=precision)
         tau_local_y = OTFSkewers_y.get_skeweralldata('taucalc_local', dtype=precision)
         tau_local_z = OTFSkewers_z.get_skeweralldata('taucalc_local', dtype=precision)      
+
+        print(f'--- Distribution of skewers in nOutput {nOutput} / scale factor:  {scale_factors[n]:.4f} / redshift: {redshifts[n]:.4f} --- ')
  
+        print(f'--- | nquantile | x_skewers | y_skewers | z_skewers | ---')
         for nquantile in range(args.nquantiles):
             indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
             quantile_key = f'quantile_{nquantile:.0f}'
@@ -1092,6 +1095,12 @@ def main():
             indx_y_currQuantile_currOutput = indx_y_currQuantile[indx_y_currQuantile_currOutput_mask]
             indx_z_currQuantile_currOutput = indx_z_currQuantile[indx_z_currQuantile_currOutput_mask]
 
+            curr_str = f"--- | {nquantile:.0f} | "
+            curr_str += f"{100 * np.sum(indx_x_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | "
+            curr_str += f"{100 * np.sum(indx_y_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | "
+            curr_str += f"{100 * np.sum(indx_z_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | --- "
+            print(curr_str)
+
             # convert the index into a skewer id to index into local optical depth array
             skewid_currQuantile_currOutput_x = indx_x_currQuantile_currOutput % nskewers_x 
             skewid_currQuantile_currOutput_y = indx_y_currQuantile_currOutput % nskewers_y
@@ -1101,9 +1110,6 @@ def main():
             tau_local_x_currQuantile_currOutput = tau_local_x[skewid_currQuantile_currOutput_x, :]
             tau_local_y_currQuantile_currOutput = tau_local_y[skewid_currQuantile_currOutput_y, :]
             tau_local_z_currQuantile_currOutput = tau_local_z[skewid_currQuantile_currOutput_z, :]
-
-            if args.verbose:
-                print(f"--- Computing Flux Power Spectrum for quantile {nquantile:.0f} in output {n:.0f} ---")
 
             # initialize FPS array from this quantile to add
             FPS_currQuantile = np.zeros(n_bins, dtype=precision)
@@ -1130,7 +1136,23 @@ def main():
 
             # place FPS from current output's quantile
             FPS_all_quantiles[quantile_key] += FPS_currQuantile
+        
+        if nskews_outquantiles:
+            # calculate the output number that each index occupies
+            indx_x_out = indices_out_quantiles // nskewers_x
+            indx_y_out = (indices_out_quantiles - nOutputs * (nskewers_x)) // nskewers_y
+            indx_z_out = (indices_out_quantiles - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
+           
+            indx_x_out_currOutput_mask = indx_x_out == n
+            indx_y_out_currOutput_mask = indx_y_out == n
+            indx_z_out_currOutput_mask = indx_z_out == n
+            curr_str = "--- | out | "
+            curr_str += f"{100 * np.sum(indx_x_out_currOutput_mask) / nskewers_tot:.4f} % | "
+            curr_str += f"{100 * np.sum(indx_y_out_currOutput_mask) / nskewers_tot:.4f} % | "
+            curr_str += f"{100 * np.sum(indx_z_out_currOutput_mask) / nskewers_tot:.4f} % | "
+            print(curr_str)
 
+        print('\n')
 
 
     for nquantile in range(args.nquantiles):
