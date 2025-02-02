@@ -25,12 +25,17 @@ def create_parser():
     parser = argparse.ArgumentParser(
         description="Compute and append power spectra")
 
-    parser.add_argument("skewfname", help='Cholla skewer output file name', type=str)
+    parser.add_argument("skewdirname", help='Cholla skewer output directory name', type=str)
 
     parser.add_argument("dlogk", help='Differential log of step-size for power spectrum k-modes', type=float)
 
-    parser.add_argument('-c', '--combine', help='Whether to combine power spectrum from each axis',
-                        action='store_true')
+    parser.add_argument("nquantiles", help='Number of quantiles to bin the optical depths', type=int)
+
+    parser.add_argument("optdepthlow", help='Lower effective optical depth limit to bin', type=float)
+
+    parser.add_argument("optdepthupp", help='Upper effective optical depth limit to bin', type=float)
+
+    parser.add_argument("nOutputsStr", help='String of outputs delimited by comma', type=str)
 
     parser.add_argument('-v', '--verbose', help='Print info along the way',
                         action='store_true')
@@ -45,6 +50,132 @@ def create_parser():
 ###
 
 
+class ChollaCosmologyHead:
+    '''
+    Cholla Cosmology Head
+        Serves as a header object that holds information that helps define a
+            specific cosmology
+        
+        Initialized with:
+        - OmegaM (float): present-day energy density parameter for matter
+        - OmegaR (float): present-day energy density parameter for radiation
+        - OmegaK (float): present-day energy density parameter for spatial curvature
+        - OmegaL (float): present-day energy density parameter for dark energy
+        - w0 (float): constant term in dark energy equation of state
+        - wa (float): linear term in dark energy equation of state
+        - H0 (float): present-day Hubble parameter in units of [km / s / Mpc]
+
+    '''
+
+    def __init__(self, OmegaM, OmegaR, OmegaK, OmegaL, w0, wa, H0):
+
+        # start with constants !
+        self.Msun_cgs = 1.98847e33 # Solar Mass in grams
+        self.kpc_cgs = 3.0857e21 # kiloparsecs in centimeters
+        self.Mpc_cgs = self.kpc_cgs * 1.e3 # Megaparsecs in centimeters
+        self.km_cgs = 1.e5 # kilometers in centimeters
+        self.kyr_cgs = 3.15569e10 # kilo-years in seconds
+        self.Myr_cgs = self.kyr_cgs * 1.e3 # mega-years in seconds
+        self.Gyr_cgs = self.Myr_cgs * 1.e3 # giga-years in seconds
+
+        self.G_cgs = 6.67259e-8 # gravitational constant in cgs [cm3 g-1 s-2]
+        self.G_cosmo = self.G_cgs / self.km_cgs / self.km_cgs / self.kpc_cgs * self.Msun_cgs # gravitational constant in cosmological units [kpc (km2 s-2) Msun-1]
+        self.kpc3_cgs = self.kpc_cgs * self.kpc_cgs * self.kpc_cgs
+        self.Mpc3_cgs = self.Mpc_cgs * self.Mpc_cgs * self.Mpc_cgs
+
+        # present-day energy density for matter, radiation, curvature, and Dark Energy
+        self.OmegaM = OmegaM
+        self.OmegaR = OmegaR
+        self.OmegaK = OmegaK
+        self.OmegaL = OmegaL
+
+        # Dark Energy equation of state like w(a) = w0 + wa(1-a)
+        self.w0, self.wa = w0, wa
+
+        # present-day hubble parameter
+        self.H0 = H0 # in [km s-1 Mpc-1]
+        self.H0_cgs = self.H0 * self.km_cgs / self.Mpc_cgs # in cgs [s-1]
+        self.H0_cosmo = self.H0 / 1.e3 # in cosmological units [km s-1 kpc-1]
+
+        # dimensionless hubble parameter
+        self.h_cosmo = self.H0 / 100.
+
+        # Hubble time (1/H0)
+        self.t_H0_cgs = 1. / self.H0_cgs # in seconds
+        self.t_H0_gyrs = self.t_H0_cgs / self.Gyr_cgs # in Gyrs
+        self.t_H0_cosmo  = self.t_H0_cgs * self.km_cgs / self.kpc_cgs # in cosmological units [s kpc km-1]
+
+        # critical density in units of [g cm-3]
+        self.rho_crit0_cgs = 3. * self.H0_cgs * self.H0_cgs / (8. * np.pi * self.G_cgs)
+
+        # critical density in units of [h2 Msun kpc-3]
+        self.rho_crit0_cosmo = self.rho_crit0_cgs * (self.kpc3_cgs) / (self.Msun_cgs) / self.h_cosmo / self.h_cosmo
+
+
+class ChollaSnapCosmologyHead:
+    '''
+    Cholla Snapshot Cosmology header object
+        Serves as a header holding information that combines a ChollaCosmologyHead
+            with a specific scale factor with the snapshot header object.
+        
+        Initialized with:
+            scale_factor (float): scale factor
+            cosmoHead (ChollaCosmologyHead): provides helpful information of cosmology & units
+
+    Values are returned in code units unless otherwise specified.
+    '''
+    def __init__(self, scale_factor, cosmoHead):
+        self.a = scale_factor
+        self.cosmoHead = cosmoHead
+
+        # calculate & attach current Hubble rate in [km s-1 Mpc-1] and [s-1]
+        self.Hubble_cosmo = self.Hubble()
+        self.Hubble_cgs = self.Hubble_cosmo * self.cosmoHead.km_cgs / self.cosmoHead.Mpc_cgs # in cgs [s-1]
+
+
+    def Hubble(self):
+        '''
+        Return the current Hubble parameter
+
+        Args:
+            ...
+        Returns:
+            H (float): Hubble parameter (km/s/Mpc)
+        '''
+
+        a2 = self.a * self.a
+        a3 = a2 * self.a
+        a4 = a3 * self.a
+        DE_factor = (self.a)**(-3. * (1. + self.cosmoHead.w0 + self.cosmoHead.wa))
+        DE_factor *= np.exp(-3. * self.cosmoHead.wa * (1. - self.a))
+
+        H0_factor = (self.cosmoHead.OmegaR / a4) + (self.cosmoHead.OmegaM / a3)
+        H0_factor += (self.cosmoHead.OmegaK / a2) + (self.cosmoHead.OmegaL * DE_factor)
+
+        return self.cosmoHead.H0 * np.sqrt(H0_factor)
+
+
+    def dvHubble(self, dx):
+        '''
+        Return the Hubble flow through a cell
+
+        Args:
+            dx (float): comoving distance between cells (kpc)
+        Returns:
+            (float): Hubble flow over a cell (km/s)
+        '''
+        # convert [kpc] to [h-1 kpc]
+        dx_h = dx / self.cosmoHead.h_cosmo
+
+        dxh_cgs = dx_h * self.cosmoHead.kpc_cgs # h^-1 kpc * (#cm / kpc) =  h^-1 cm
+        dxh_Mpc = dxh_cgs / self.cosmoHead.Mpc_cgs # h^-1 cm / (#cm / Mpc) = h^-1 Mpc
+
+        # convert to physical length
+        dxh_Mpc_phys = dxh_Mpc * self.a
+
+        return self.Hubble() * dxh_Mpc_phys
+
+
 ###
 # Calculations related to the geometry along an axis for a power spectrum calculation
 ###
@@ -57,14 +188,12 @@ class ChollaFluxPowerSpectrumHead:
     Holds information regarding the power spectrum calculation
 
         Initialized with:
-        - dlogk (float): differential step in log k-space
         - nlos (int): number of line-of-sight cells
         - dvHubble (float): differential Hubble flow velocity across a cell
 
     Values are returned in code units unless otherwise specified.
     '''
-    def __init__(self, dlogk, nlos, dvHubble):
-        self.dlogk = dlogk
+    def __init__(self, nlos, dvHubble):
         self.n_los = nlos
         self.n_fft = int(self.n_los / 2 + 1)
         self.dvHubble = dvHubble
@@ -75,42 +204,7 @@ class ChollaFluxPowerSpectrumHead:
         self.l_kmin = np.log10( (2. * np.pi) / (self.u_max) )
         self.l_kmax = np.log10( (2. * np.pi * (self.n_fft - 1.) ) / (self.u_max) )
         self.l_kstart = np.log10(0.99) + self.l_kmin
-        self.n_bins = int(1 + ( (self.l_kmax - self.l_kstart) / self.dlogk ) )
 
-
-    def get_kvals(self, dtype=np.float32):
-        '''
-        Return the k-centers of the power spectrum
-
-        Args:
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            kcenters (arr): k mode centers array
-        '''
-
-        kcenters = np.zeros(self.n_bins, dtype=dtype)
-        iter_arr = np.arange(self.n_bins, dtype=dtype)
-
-        kcenters[:] = 10**(self.l_kstart + (self.dlogk) * (iter_arr + 0.5) )
-
-        return kcenters
-
-    def get_kvals_edges(self, dtype=np.float32):
-        '''
-        Return the k-edges of the power spectrum
-
-        Args:
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            kedges (arr): k mode edges array
-        '''
-
-        kedges = np.zeros(self.n_bins + 1, dtype=dtype)
-        iter_arr = np.arange(self.n_bins + 1, dtype=dtype)
-
-        kedges[:] = 10**(self.l_kstart + (self.dlogk * iter_arr) )
-
-        return kedges
 
     def get_kvals_fft(self, dtype=np.float32):
         '''
@@ -129,38 +223,6 @@ class ChollaFluxPowerSpectrumHead:
 
         return kcenters_fft
 
-    def get_fft_binids(self, dtype_bin=np.int64, dtype_calc=np.float32, useforloop=True):
-        '''
-        Return the indices that the k-mode fft bins land on within kvals_edges
-
-        Args:
-            dtype_bin (np type): (optional) numpy precision to use for returned array
-            dtype_calc (np type): (optional) numpy precision to use for calculations
-            useforloop (bool): (optional) whether to use for-loop or not  
-        Returns:
-            fft_binids (arr): indices where fft k-mode lands wrt kvals edges
-        '''
-
-        fft_binids = np.zeros(self.n_fft, dtype=dtype_bin)
-
-        # grab fft kvalues
-        kvals_fft = self.get_kvals_fft(dtype=dtype_calc)
-
-        if useforloop:
-            # grab edges for comparison
-            kvals_edges = self.get_kvals_edges(dtype=dtype_calc)
-            for bin_id_fft in range(self.n_fft):
-                edge_greater_fft = np.argwhere(kvals_fft[bin_id_fft] < kvals_edges).flatten()
-                # okay to flatten bc we know kvals_fft and kvals_edges are 1D arrays
-                if edge_greater_fft.size > 0 :
-                    # ensure we're indexing into a non-empty array
-                    fft_binids[bin_id_fft] = edge_greater_fft[0] - 1
-        else:
-            fft_binids_float = (np.log10(kvals_fft) - self.l_kstart) / self.dlogk
-            fft_binids[:] = np.floor(fft_binids_float)
-
-        return fft_binids
-
     def get_FPS(self, local_opticaldepths, precision=np.float64):
         '''
         Return the Flux Power Spectrum given the local optical depths.
@@ -170,7 +232,7 @@ class ChollaFluxPowerSpectrumHead:
             local_opticaldepths (arr): local optical depths of all skewers
             precision (np type): (optional) numpy precision to use
         Return:
-            kmode_edges (arr): k mode edges array
+            kmode_fft (arr): Fourier Transform k mode array
             P_k_mean (arr): mean transmitted flux power spectrum within kmode edges
         '''
         assert local_opticaldepths.ndim == 2
@@ -178,42 +240,34 @@ class ChollaFluxPowerSpectrumHead:
 
         n_skews = local_opticaldepths.shape[0]
 
-        # find the indices that describe where the k-mode FFT bins fall within kval_edges (from dlogk)
-        fft_binids = self.get_fft_binids(dtype_bin=np.int64, dtype_calc=np.float64)
-
-        # find number of fft modes that fall in requested dlogk bin id (used later to average total power in dlogk bin)
-        hist_n = np.zeros(self.n_bins, dtype=precision)
-        for bin_id in fft_binids[1:]:
-            hist_n[bin_id] += 1.
-        # (protect against dividing by zero)
-        hist_n[hist_n == 0] = 1.
-
         # calculate local transmitted flux (& its mean)
         fluxes = np.exp(-local_opticaldepths)
         flux_mean = np.mean(fluxes)
 
-        # initialize total power array & temporary FFT array
-        hist_PS_vals = np.zeros(self.n_bins, dtype=precision)
-        P_k_tot = np.zeros(self.n_bins, dtype=precision)
+        # initialize total power array & delta F avg arrays
+        delta_F_avg = np.zeros(self.n_fft , dtype=precision)
+        P_k_tot = np.zeros(self.n_fft, dtype=precision)
 
         for nSkewerID in range(n_skews):
-            # clean out temporary FFT array
-            hist_PS_vals[:] = 0.
-
             # calculate flux fluctuation 
-            dFlux_skew = fluxes[nSkewerID] / flux_mean
+            dFlux_skew = (fluxes[nSkewerID] - flux_mean) / flux_mean
 
             # perform fft & calculate amplitude of fft
             fft = np.fft.rfft(dFlux_skew)
-            fft2 = (fft.imag * fft.imag + fft.real * fft.real) / self.n_los / self.n_los
-
-            # add power for each fft mode
-            hist_PS_vals[fft_binids[1:]] += fft2[1:]
+            fft2 = (fft.imag * fft.imag) + (fft.real * fft.real)
 
             # take avg & scale by umax
-            delta_F_avg = hist_PS_vals / hist_n
+            delta_F_avg = fft2 / self.n_los / self.n_los
             P_k = self.u_max * delta_F_avg
             P_k_tot += P_k
+
+        # average out by the number of skewers
+        P_k_mean = P_k_tot / n_skews
+
+        # grab k-mode values
+        kmode_fft = self.get_kvals_fft(precision)
+
+        return (kmode_fft, P_k_mean)
 
 
 
@@ -278,8 +332,17 @@ class ChollaOnTheFlySkewers_i:
             ...
         '''
 
+        keys_1D, keys_2D = [], []
         with h5py.File(self.fPath, 'r') as fObj:
             self.allkeys = set(fObj[self.OTFSkewersiHead.skew_key].keys())
+            for key in self.allkeys:
+                if fObj[self.OTFSkewersiHead.skew_key].get(key).ndim == 1:
+                    keys_1D.append(key)
+                if fObj[self.OTFSkewersiHead.skew_key].get(key).ndim == 2:
+                    keys_2D.append(key)
+
+        self.keys_1D = set(keys_1D)
+        self.keys_2D = set(keys_2D)
 
         return
 
@@ -311,10 +374,14 @@ class ChollaOnTheFlySkewers_i:
 
         assert self.check_datakey(key)
 
-        arr = np.zeros((self.OTFSkewersiHead.n_skews, self.OTFSkewersiHead.n_i), dtype=dtype)
-        fObj = h5py.File(self.fPath, 'r')
-        arr[:,:] = fObj[self.OTFSkewersiHead.skew_key].get(key)[:, :]
-        fObj.close()
+        if key in self.keys_1D:
+            arr = np.zeros((self.OTFSkewersiHead.n_skews), dtype=dtype)
+            with h5py.File(self.fPath, 'r') as fObj:
+                arr[:] = fObj[self.OTFSkewersiHead.skew_key].get(key)[:]
+        elif key in self.keys_2D:
+            arr = np.zeros((self.OTFSkewersiHead.n_skews, self.OTFSkewersiHead.n_i), dtype=dtype)
+            with h5py.File(self.fPath, 'r') as fObj:
+                arr[:,:] = fObj[self.OTFSkewersiHead.skew_key].get(key)[:, :]
 
         return arr
 
@@ -428,6 +495,7 @@ class ChollaOnTheFlySkewers:
             self.Omega_M = fObj.attrs['Omega_M'].item()
             self.Omega_L = fObj.attrs['Omega_L'].item()
             self.Omega_K = fObj.attrs['Omega_K'].item()
+            self.Omega_b = fObj.attrs['Omega_b'].item()
 
             self.w0 = fObj.attrs['w0'].item()
             self.wa = fObj.attrs['wa'].item()
@@ -696,34 +764,441 @@ def main():
 
     if args.verbose:
         print("we're verbose in this mf !")
-        print(f"--- We are looking at skewer file : {args.skewfname} ---")
+        print(f"--- We are looking at skewer directory : {args.skewdirname} ---")
         print(f"--- We are placing power spectra in dlogk : {args.dlogk} ---")
         
-        if args.combine:
-            print(f"--- We are saving combined power spectra (!) ---")
-        else:
-            print(f"--- We are NOT saving combined power spectra (!) ---")
+        print(f"--- We are binning effective optical depth in {args.nquantiles:.0f} quantiles ---")
+        print(f"--- We have a range from {args.optdepthlow:.3e} to {args.optdepthupp:.3e}---")
+
+        print(f"--- We will be using outputs : {args.nOutputsStr} ---")
+        
 
     precision = np.float64
 
-    skewer_fPath = Path(args.skewfname).resolve()
+    # make sure directories exist
+    skewer_dirPath = Path(args.skewdirname).resolve()
+    assert skewer_dirPath.is_dir()
 
-    # ensure that local optical depth is a dataset
-    with h5py.File(skewer_fPath, 'r') as fObj:    
-        local_opticaldepth_key = 'taucalc_local'
-        assert local_opticaldepth_key in fObj['skewers_x'].keys()
-        assert local_opticaldepth_key in fObj['skewers_y'].keys()
-        assert local_opticaldepth_key in fObj['skewers_z'].keys()
+
+    # parse nOutputsStr, get list of outputs, convert to np array
+    nOutputsStr_lst = args.nOutputsStr.split(',')
+    nOutputs_arr = np.zeros(len(nOutputsStr_lst), dtype=np.int64)
+    for n, nOutputStr in enumerate(nOutputsStr_lst):
+        # cast into int
+        nOutputs_arr[n] = int(nOutputStr)
+    nOutputs = nOutputs_arr.size
 
     # ensure dlogk is reasonable
     assert args.dlogk > 0
 
-    # create ChollaOTFSkewers object
-    OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
+    # ensure number of quantiles is reasonable
+    assert args.nquantiles > 0
 
-    # calculate the power spectra
-    P_k_calc(OTFSkewers, args.dlogk, args.combine, args.verbose, precision=np.float64)
+    # ensure limits are reasonable
+    assert args.optdepthlow >= 0
+    assert args.optdepthupp > args.optdepthlow
 
+    # go over each file to ...
+    # make sure required keys are there
+    # get data to save as future attrs
+    # get skewer specific information
+
+    req_keys = ['taucalc_local', 'taucalc_eff']
+    precision = np.float64
+    Omega_K, Omega_L, Omega_M, Omega_R, Omega_b = 0., 0., 0., 0., 0.
+    H0, w0, wa = 0., 0., 0.
+    Lbox = np.zeros(3, dtype=precision)
+    nCells = np.zeros(3, dtype=precision)
+    scale_factors = np.zeros(nOutputs, dtype=precision)
+    redshifts = np.zeros(nOutputs, dtype=precision)
+    nstrides = np.zeros(3, dtype=precision)
+    nskewers_x, nskewers_y, nskewer_z = 0, 0, 0
+
+    for n, nOutput in enumerate(nOutputs_arr):
+        skewer_fname = f"{nOutput:.0f}_skewers.h5"
+        skewer_fPath = skewer_dirPath / Path(skewer_fname)
+        if args.verbose:
+            print(f"--- Making sure {skewer_fPath} exists with required data ---")
+
+        # create ChollaOTFSkewers object
+        OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
+        OTFSkewers_x = OTFSkewers.get_skewersx_obj()
+        OTFSkewers_y = OTFSkewers.get_skewersy_obj()
+        OTFSkewers_z = OTFSkewers.get_skewersz_obj()
+
+        for key in req_keys:
+            assert OTFSkewers_x.check_datakey(key)
+            assert OTFSkewers_y.check_datakey(key)
+            assert OTFSkewers_z.check_datakey(key)
+
+        # save snapshot specific information
+        scale_factors[n] = OTFSkewers.current_a
+        redshifts[n] = OTFSkewers.current_z
+
+        #  assume that the following attributes are constant, save first go around
+        if not n:
+            Omega_K, Omega_L = OTFSkewers.Omega_K, OTFSkewers.Omega_L
+            Omega_M, Omega_R = OTFSkewers.Omega_M, OTFSkewers.Omega_R
+            Omega_b, H0 = OTFSkewers.Omega_b, OTFSkewers.H0
+            w0, wa = OTFSkewers.w0, OTFSkewers.wa
+            Lbox[0] = OTFSkewers.dx * OTFSkewers.nx
+            Lbox[1] = OTFSkewers.dy * OTFSkewers.ny
+            Lbox[2] = OTFSkewers.dz * OTFSkewers.nz
+            nCells[0] = OTFSkewers.nx
+            nCells[1] = OTFSkewers.ny
+            nCells[2] = OTFSkewers.nz
+            nstrides[0] = OTFSkewers.nstride_x
+            nstrides[1] = OTFSkewers.nstride_y
+            nstrides[2] = OTFSkewers.nstride_z
+
+            nskewers_x = int((OTFSkewers.ny * OTFSkewers.nz) / (OTFSkewers.nstride_x * OTFSkewers.nstride_x))
+            nskewers_y = int((OTFSkewers.nx * OTFSkewers.nz) / (OTFSkewers.nstride_y * OTFSkewers.nstride_y))
+            nskewers_z = int((OTFSkewers.nx * OTFSkewers.ny) / (OTFSkewers.nstride_z * OTFSkewers.nstride_z))
+    
+    nskewers_tot = nskewers_x + nskewers_y + nskewers_z
+    if args.verbose:
+        print(f"--- We are sorting {nskewers_tot * nOutputs:.0f} total skewers ---")
+
+
+    # make arrays of all effective optical depths along each axis
+    # knowing the axis_skewid and nOutput, index will be [nOutput * nskewers_x + axis_skewid]   
+    optdeptheff_x = np.zeros(nOutputs * nskewers_x, dtype=precision)
+    optdeptheff_y = np.zeros(nOutputs * nskewers_y, dtype=precision)
+    optdeptheff_z = np.zeros(nOutputs * nskewers_z, dtype=precision)
+    for n, nOutput in enumerate(nOutputs_arr):
+        skewer_fname = f"{nOutput:.0f}_skewers.h5"
+        skewer_fPath = skewer_dirPath / Path(skewer_fname)
+        # create ChollaOTFSkewers object
+        OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
+        OTFSkewers_x = OTFSkewers.get_skewersx_obj()
+        OTFSkewers_y = OTFSkewers.get_skewersy_obj()
+        OTFSkewers_z = OTFSkewers.get_skewersz_obj()
+        optdeptheff_x[n * nskewers_x: (n+1)*nskewers_x] = OTFSkewers_x.get_skeweralldata('taucalc_eff', 
+                                                                                         dtype=precision)
+        optdeptheff_y[n * nskewers_y: (n+1)*nskewers_y] = OTFSkewers_y.get_skeweralldata('taucalc_eff', 
+                                                                                         dtype=precision)
+        optdeptheff_z[n * nskewers_z: (n+1)*nskewers_z] = OTFSkewers_z.get_skeweralldata('taucalc_eff', 
+                                                                                         dtype=precision)
+
+    # group all effective optical depths
+    optdeptheff_all = np.zeros(nOutputs * nskewers_tot, dtype=precision)
+    optdeptheff_all[ : nOutputs * (nskewers_x)] = optdeptheff_x
+    optdeptheff_all[nOutputs * (nskewers_x) : nOutputs * (nskewers_x + nskewers_y)] = optdeptheff_y
+    optdeptheff_all[nOutputs * (nskewers_x + nskewers_y) : ] = optdeptheff_z
+
+    # create a mask of all effective optical depths within our range
+    optdeptheff_all_inbounds_mask = (optdeptheff_all > args.optdepthlow) & (optdeptheff_all < args.optdepthupp)
+    nskewers_inbounds = np.sum(optdeptheff_all_inbounds_mask)
+
+    # calculate the number of skewers that is going to fall within each quantile
+    nskewers_perquantile = nskewers_inbounds / args.nquantiles
+
+    # index of (0, nOutputs * nskewers_x) corresponds to x-axis
+    # index of (nOutputs * nskewers_x, nOutputs * (nskewers_x + nskewers_y)) corresponds to y-axis
+    # index of (nOutputs * (nskewers_x + nskewers_y), nOutputs *(nskewers_x + nskewers_y + nskewers_z)) corresponds to z-axis
+    indices_all_optdepthsort = np.argsort(optdeptheff_all)
+    indices_all_inbounds_mask_optdepthsort = optdeptheff_all_inbounds_mask[indices_all_optdepthsort]
+  
+    # array of indices that fall within quantile
+    indices_all_optdepthsort_inbounds = indices_all_optdepthsort[indices_all_inbounds_mask_optdepthsort]
+
+    # create index that places each sorted opt depth into a quantile
+    indices_all_inbounds_arange_quantile = np.floor(np.arange(nskewers_inbounds) / nskewers_perquantile)
+
+    # create index directories for each quantile. may not have same number of skewers in each quantile
+    indices_all_quantiles = {}
+    for nquantile in range(args.nquantiles):
+        indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
+        quantile_key = f'quantile_{nquantile:.0f}'
+        indices_all_quantiles[quantile_key] = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+    
+        quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+
+        nskews_inquantile = np.sum(indices_all_inbounds_inquantile)
+
+        # make masks of the indices that fall within a specific axis
+        quantile_indx_x_mask = quantile_indx < nOutputs * nskewers_x
+        quantile_indx_y_mask = (nskewers_x < nOutputs * quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
+        quantile_indx_z_mask = (nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
+
+        # apply masks to get indices in each axis
+        quantile_indx_x = quantile_indx[quantile_indx_x_mask]
+        quantile_indx_y = quantile_indx[quantile_indx_y_mask]
+        quantile_indx_z = quantile_indx[quantile_indx_z_mask]
+
+        # calculate the output number that each index occupies
+        indx_x_nOutput = quantile_indx_x // nskewers_x
+        indx_y_nOutput = (quantile_indx_y - nOutputs * (nskewers_x)) // nskewers_y
+        indx_z_nOutput = (quantile_indx_z - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
+
+
+        print(f"--- Distribution of {nskews_inquantile:.0f} skewers in quantile {nquantile:.0f}  ---")
+        print(f"--- tau = [{optdeptheff_all[quantile_indx[0]]:.4e}, {optdeptheff_all[quantile_indx[-1]]:.4e}] ---")
+        print("--- | n | nOutput | scale factor | redshift | x_skewers | y_skewers | z_skewers |---")
+        for n, nOutput in enumerate(nOutputs_arr):
+            curr_str = f"--- | {n:.0f} | {nOutput:.0f} | {scale_factors[n]:.4f} | {redshifts[n]:.4f} | "
+            curr_str += f"{100. * np.sum(indx_x_nOutput == n) / nskews_inquantile:.4f} % | "
+            curr_str += f"{100. * np.sum(indx_y_nOutput == n) / nskews_inquantile:.4f} % | "
+            curr_str += f"{100. * np.sum(indx_z_nOutput == n) / nskews_inquantile:.4f} % | ---"
+            print(curr_str)
+        print("\n")
+
+
+    
+    indices_out_quantiles = np.argwhere(~optdeptheff_all_inbounds_mask)
+    nskews_outquantiles = np.sum(~optdeptheff_all_inbounds_mask)
+
+    print(f"--- We have {nskews_outquantiles:.0f} / {nskewers_tot * nOutputs:.0f} = {100 * nskews_outquantiles / (nskewers_tot * nOutputs):.0f} % skewers outside of bounds ---")
+    if nskews_outquantiles:
+        # calculate the output number that each index occupies
+        indx_x_out = indices_out_quantiles // nskewers_x
+        indx_y_out = (indices_out_quantiles - nOutputs * (nskewers_x)) // nskewers_y
+        indx_z_out = (indices_out_quantiles - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
+
+        print("--- | n | nOutput | scale factor | redshift | x_skewers | y_skewers | z_skewers |---")
+        # get indices of those outside the range and print info here
+        for n, nOutput in enumerate(nOutputs_arr):
+            curr_str = f"--- | {n:.0f} | {nOutput:.0f} | {scale_factors[n]:.4f} | {redshifts[n]:.4f} | "
+            curr_str += f"{100. * np.sum(indx_x_out == n) / nskews_outquantiles:.4f} % | "
+            curr_str += f"{100. * np.sum(indx_y_out == n) / nskews_outquantiles:.4f} % | "
+            curr_str += f"{100. * np.sum(indx_z_out == n) / nskews_outquantiles:.4f} % | ---"
+            print(curr_str)
+        print("\n")
+
+
+    # calculate Hubble flow to find most inclusive k_min or u_max
+    chCosmoHead = ChollaCosmologyHead(Omega_M, Omega_R, Omega_K, Omega_L, w0, wa, H0)
+    dx, dy, dz = Lbox / nCells
+    dvHubbles_x = np.zeros(nOutputs, dtype=precision)
+    dvHubbles_y = np.zeros(nOutputs, dtype=precision)
+    dvHubbles_z = np.zeros(nOutputs, dtype=precision)
+
+    for n, scale_factor in enumerate(scale_factors):
+        chSnapCosmoHead = ChollaSnapCosmologyHead(scale_factor, chCosmoHead)
+        dvHubbles_x[n] = chSnapCosmoHead.dvHubble(dx)
+        dvHubbles_y[n] = chSnapCosmoHead.dvHubble(dy)
+        dvHubbles_z[n] = chSnapCosmoHead.dvHubble(dz)
+
+    print("dvHubbles", dvHubbles_x)
+
+    dvHubblex_min, dvHubblex_max = np.min(dvHubbles_x), np.max(dvHubbles_x)
+    dvHubbley_min, dvHubbley_max = np.min(dvHubbles_y), np.max(dvHubbles_y)
+    dvHubblez_min, dvHubblez_max = np.min(dvHubbles_z), np.max(dvHubbles_z)
+
+    dvHubble_min = np.min([dvHubblex_min, dvHubbley_min, dvHubblez_min])
+    dvHubble_max = np.max([dvHubblex_max, dvHubbley_max, dvHubblez_max])
+
+    u_max = dvHubble_max * np.max(nCells)
+    l_kmin = np.log10( (2. * np.pi) / u_max)
+    l_kmax = np.log10( (2. * np.pi) / dvHubble_min)
+
+    print("dvHubble min:", dvHubble_min)
+    print("dvHubble max:", dvHubble_max)
+
+    print("l_kmin: ", l_kmin)
+    print("l_kmax: ", l_kmax)
+
+    # create k value edges for inclusive power spectrum
+    n_bins = int(1 + ((l_kmax - l_kmin) / args.dlogk))
+    iter_arr = np.arange(n_bins + 1)
+    kedges = np.zeros(n_bins+1, dtype=precision)
+    kedges[:] = 10**(l_kmin + (args.dlogk * iter_arr))  
+ 
+
+    # create flux power spectrum for each quantile
+    FPS_all_quantiles = {}
+
+    for nquantile in range(args.nquantiles):
+        quantile_key = f'quantile_{nquantile:.0f}'
+        FPS_all_quantiles[quantile_key] = np.zeros(n_bins, dtype=precision)
+
+    for n, nOutput in enumerate(nOutputs_arr):
+        # create Flux Power Spectrum object
+        FPSHead_x = ChollaFluxPowerSpectrumHead(nCells[0], dvHubbles_x[n])
+        FPSHead_y = ChollaFluxPowerSpectrumHead(nCells[1], dvHubbles_y[n])
+        FPSHead_z = ChollaFluxPowerSpectrumHead(nCells[2], dvHubbles_z[n])
+
+        # calculate kmodes
+        kvals_fft_x = FPSHead_x.get_kvals_fft(dtype=precision)
+        kvals_fft_y = FPSHead_y.get_kvals_fft(dtype=precision)
+        kvals_fft_z = FPSHead_z.get_kvals_fft(dtype=precision)
+
+        # for each axis, calculate where kfft lands on kedges
+        # then find out _how many_ fft modes land in each kedge bin
+        fft_binids_float_x = (np.log10(kvals_fft_x) - l_kmin ) / args.dlogk
+        fft_binids_x = np.zeros(FPSHead_x.n_fft, dtype=np.int64)
+        fft_binids_x[:] = np.floor(fft_binids_float_x)
+        fft_nbins_kedges_x = np.zeros(n_bins, dtype=precision)
+        for fft_bin_id in fft_binids_x[1:]:
+            fft_nbins_kedges_x[fft_bin_id] += 1.
+
+        fft_binids_float_y = (np.log10(kvals_fft_y) - l_kmin ) / args.dlogk
+        fft_binids_y = np.zeros(FPSHead_y.n_fft, dtype=np.int64)
+        fft_binids_y[:] = np.floor(fft_binids_float_y)
+        fft_nbins_kedges_y = np.zeros(n_bins, dtype=precision)
+        for fft_bin_id in fft_binids_y[1:]:
+            fft_nbins_kedges_y[fft_bin_id] += 1.
+
+        fft_binids_float_z = (np.log10(kvals_fft_z) - l_kmin ) / args.dlogk
+        fft_binids_z = np.zeros(FPSHead_z.n_fft, dtype=np.int64)
+        fft_binids_z[:] = np.floor(fft_binids_float_z)
+        fft_nbins_kedges_z = np.zeros(n_bins, dtype=precision)
+        for fft_bin_id in fft_binids_z[1:]:
+            fft_nbins_kedges_z[fft_bin_id] += 1.
+
+        # (protect against dividing by zero)
+        fft_nbins_kedges_x[fft_nbins_kedges_x == 0] = 1.
+        fft_nbins_kedges_y[fft_nbins_kedges_y == 0] = 1.
+        fft_nbins_kedges_z[fft_nbins_kedges_z == 0] = 1.
+
+        # create ChollaOTFSkewers object to grab local optical depths
+        skewer_fname = f"{nOutput:.0f}_skewers.h5"
+        skewer_fPath = skewer_dirPath / Path(skewer_fname)
+        OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
+        OTFSkewers_x = OTFSkewers.get_skewersx_obj()
+        OTFSkewers_y = OTFSkewers.get_skewersy_obj()
+        OTFSkewers_z = OTFSkewers.get_skewersz_obj()
+        
+        tau_local_x = OTFSkewers_x.get_skeweralldata('taucalc_local', dtype=precision)
+        tau_local_y = OTFSkewers_y.get_skeweralldata('taucalc_local', dtype=precision)
+        tau_local_z = OTFSkewers_z.get_skeweralldata('taucalc_local', dtype=precision)      
+ 
+        for nquantile in range(args.nquantiles):
+            indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
+            quantile_key = f'quantile_{nquantile:.0f}'
+            quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+
+            # make masks of the indices that fall within a specific axis
+            quantile_indx_x_mask = quantile_indx < nOutputs * nskewers_x
+            quantile_indx_y_mask = (nskewers_x < nOutputs * quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
+            quantile_indx_z_mask = (nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
+
+            # apply masks to get indices in each axis
+            indx_x_currQuantile = quantile_indx[quantile_indx_x_mask]
+            indx_y_currQuantile = quantile_indx[quantile_indx_y_mask]
+            indx_z_currQuantile = quantile_indx[quantile_indx_z_mask]
+
+            # calculate the output number that each index occupies
+            indx_x_currQuantile_nOutput = indx_x_currQuantile // nskewers_x
+            indx_y_currQuantile_nOutput = (indx_y_currQuantile - nOutputs * (nskewers_x)) // nskewers_y
+            indx_z_currQuantile_nOutput = (indx_z_currQuantile - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
+
+            # grab only indices in output
+            indx_x_currQuantile_currOutput_mask = indx_x_currQuantile_nOutput == n
+            indx_y_currQuantile_currOutput_mask = indx_y_currQuantile_nOutput == n
+            indx_z_currQuantile_currOutput_mask = indx_z_currQuantile_nOutput == n
+
+            indx_x_currQuantile_currOutput = indx_x_currQuantile[indx_x_currQuantile_currOutput_mask]
+            indx_y_currQuantile_currOutput = indx_y_currQuantile[indx_y_currQuantile_currOutput_mask]
+            indx_z_currQuantile_currOutput = indx_z_currQuantile[indx_z_currQuantile_currOutput_mask]
+
+            # convert the index into a skewer id to index into local optical depth array
+            skewid_currQuantile_currOutput_x = indx_x_currQuantile_currOutput % nskewers_x 
+            skewid_currQuantile_currOutput_y = indx_y_currQuantile_currOutput % nskewers_y
+            skewid_currQuantile_currOutput_z = indx_z_currQuantile_currOutput % nskewers_z
+
+            # grab current output local optical depth in quantile
+            tau_local_x_currQuantile_currOutput = tau_local_x[skewid_currQuantile_currOutput_x, :]
+            tau_local_y_currQuantile_currOutput = tau_local_y[skewid_currQuantile_currOutput_y, :]
+            tau_local_z_currQuantile_currOutput = tau_local_z[skewid_currQuantile_currOutput_z, :]
+
+            if args.verbose:
+                print(f"--- Computing Flux Power Spectrum for quantile {nquantile:.0f} in output {n:.0f} ---")
+
+            # initialize FPS array from this quantile to add
+            FPS_currQuantile = np.zeros(n_bins, dtype=precision)
+
+            # for each axis: 1) compute flux power spectrum in quantile, 2) use fft to kedge bin map
+            # to add FPS, 3) average by num of fft bins in that kedge bin. IF there are local tau
+            if tau_local_x_currQuantile_currOutput.size:
+                _, FPS_currQuantile_x = FPSHead_x.get_FPS(tau_local_x_currQuantile_currOutput,
+                                                          precision=precision)
+                FPS_currQuantile[fft_binids_x[1:]] += FPS_currQuantile_x[1:]
+                FPS_currQuantile /= fft_nbins_kedges_x
+
+            if tau_local_y_currQuantile_currOutput.size:
+                _, FPS_currQuantile_y = FPSHead_y.get_FPS(tau_local_y_currQuantile_currOutput,
+                                                          precision=precision)
+                FPS_currQuantile[fft_binids_y[1:]] += FPS_currQuantile_y[1:]
+                FPS_currQuantile /= fft_nbins_kedges_y
+
+            if tau_local_z_currQuantile_currOutput.size:
+                _, FPS_currQuantile_z = FPSHead_z.get_FPS(tau_local_z_currQuantile_currOutput,
+                                                          precision=precision)
+                FPS_currQuantile[fft_binids_z[1:]] += FPS_currQuantile_z[1:]
+                FPS_currQuantile /= fft_nbins_kedges_z
+
+            # place FPS from current output's quantile
+            FPS_all_quantiles[quantile_key] += FPS_currQuantile
+
+
+
+    for nquantile in range(args.nquantiles):
+        quantile_key = f'quantile_{nquantile:.0f}'
+        print(FPS_all_quantiles[quantile_key])
+    
+
+    # write data to where skewer directory resides
+    skewerParent_dirPath = skewer_dirPath.parent.resolve()
+    outfile_fname = f"fluxpowerspectrum_optdepthbin.h5"
+    outfile_fPath = skewerParent_dirPath / Path(outfile_fname)
+
+
+    with h5py.File(outfile_fPath, 'w-') as fObj:
+        # place attributes
+        # start with cosmo info
+        _ = fObj.attrs.create('Omega_R', Omega_R)
+        _ = fObj.attrs.create('Omega_M', Omega_M)
+        _ = fObj.attrs.create('Omega_L', Omega_L)
+        _ = fObj.attrs.create('Omega_K', Omega_K)
+        _ = fObj.attrs.create('Omega_b', Omega_b)
+        _ = fObj.attrs.create('w0', w0)
+        _ = fObj.attrs.create('wa', wa)
+        _ = fObj.attrs.create('H0', H0)
+
+        # sim info
+        _ = fObj.attrs.create('Lbox', Lbox)
+        _ = fObj.attrs.create('nCells', nCells)
+        _ = fObj.attrs.create('nStrides', nstrides)
+        _ = fObj.attrs.create('nSkewers', np.array([nskewers_x, nskewers_y, nskewers_z]))
+
+        # output info
+        _ = fObj.attrs.create('redshifts', redshifts)
+        _ = fObj.attrs.create('scale_factors', scale_factors)
+
+        # analysis info
+        _ = fObj.attrs.create('dlogk', args.dlogk)
+        _ = fObj.attrs.create('tau_eff_low', args.optdepthlow)
+        _ = fObj.attrs.create('tau_eff_upp', args.optdepthupp)
+        _ = fObj.attrs.create('nquantiles', args.nquantiles)
+        _ = fObj.attrs.create('k_edges', kedges)
+
+        # flux power spectra info
+        for nquantile in range(args.nquantiles):
+            indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
+            quantile_key = f'quantile_{nquantile:.0f}'
+            quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+            FPS_currQuantile = FPS_all_quantiles[quantile_key]
+
+            # grab upper and lower effective optical depths
+            optdeptheff_currQuantile_min = optdeptheff_all[quantile_indx[0]]
+            optdeptheff_currQuantile_max = optdeptheff_all[quantile_indx[-1]]
+
+            quantile_groupkey = "FluxPowerSpectrum_" + quantile_key
+            quantile_group = fObj.create_group(quantile_groupkey)
+
+            _ = quantile_group.attrs.create('tau_min', optdeptheff_currQuantile_min)
+            _ = quantile_group.attrs.create('tau_max', optdeptheff_currQuantile_max)
+
+            _ = quantile_group.create_dataset('P(k)', data=FPS_currQuantile)
+            _ = quantile_group.create_dataset('indices', data=quantile_indx)
+
+#placebo: check Lambda-CDM. split into different tau. normalization of the power spectra knows about tau, soi
+
+#1. science movtivation
+#2. what I did
+#3. results
+ 
 
 
 if __name__=="__main__":
