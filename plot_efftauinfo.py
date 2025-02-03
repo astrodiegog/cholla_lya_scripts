@@ -25,7 +25,7 @@ def create_parser():
     '''
 
     parser = argparse.ArgumentParser(
-        description="Compute and append power spectra")
+        description="Plot the distribution of effective optical depths")
 
     parser.add_argument("skewdirname", help='Cholla skewer output directory name', type=str)
 
@@ -366,8 +366,7 @@ def main():
     # make sure required keys are populated
     optdeptheff_key = 'taucalc_eff'
     precision = np.float64
-    redshift_arr = np.zeros(nOutputs.size, dtype=np.float64)
-    redshift_bins = np.zeros(nOutputs.size+1, dtype=np.float64)
+    redshift_bins = np.zeros(nOutputs+1, dtype=np.float64)
 
     for n, nOutput in enumerate(nOutputs_arr):
         skewer_fname = f"{nOutput:.0f}_skewers.h5"
@@ -385,15 +384,14 @@ def main():
         assert OTFSkewers_y.check_datakey(optdeptheff_key)
         assert OTFSkewers_z.check_datakey(optdeptheff_key)      
 
-        redshift_arr[n] = OTFSkewers.current_z 
         redshift_bins[n] = OTFSkewers.current_z
 
     # optical depth histogram bins
-    l_tau_min, l_tau_max = -3., 2.
+    l_tau_min, l_tau_max = -4., 6.
     tau_nbins = 250
     l_tau_bins = np.linspace(l_tau_min, l_tau_max, tau_nbins) 
 
-    hist_eff_ltau = np.zeros((tau_nbins-1, nOutputs.size))
+    hist_eff_ltau = np.zeros((tau_nbins-1, nOutputs))
 
     for n, nOutput in enumerate(nOutputs_arr):
         skewer_fname = f"{nOutput:.0f}_skewers.h5"
@@ -416,9 +414,9 @@ def main():
         yeff_ltau_hist, _ = np.histogram(np.log10(yefftaus.flatten()), bins=l_tau_bins)
         zeff_ltau_hist, _ = np.histogram(np.log10(zefftaus.flatten()), bins=l_tau_bins)
 
-        hist_eff_ltau[:,nOutput] += xeff_ltau_hist
-        hist_eff_ltau[:,nOutput] += yeff_ltau_hist
-        hist_eff_ltau[:,nOutput] += zeff_ltau_hist
+        hist_eff_ltau[:,n] += xeff_ltau_hist
+        hist_eff_ltau[:,n] += yeff_ltau_hist
+        hist_eff_ltau[:,n] += zeff_ltau_hist
 
         xnskews = xefftaus.size
         ynskews = yefftaus.size
@@ -434,12 +432,12 @@ def main():
             norm_const = np.sum(hist_eff_ltau[:,nOutput])
 
         # normalize at each redshift bin
-        hist_eff_ltau[:,nOutput] = hist_eff_ltau[:,nOutput] / norm_const
+        hist_eff_ltau[:,n] = hist_eff_ltau[:,n] / norm_const
 
     yaxis_label = r'$\tau_{\rm{med}}$'
-    yaxis_low, yaxis_hi = 1.e-3, 1.e2
+    yaxis_low, yaxis_hi = 1.e-4, 1.e6
     xlabel_str = r'$z$'
-    z_low, z_hi  0., 8.5
+    z_low, z_hi = np.min(redshift_bins) * 0.95, np.max(redshift_bins) * 1.05
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
     im0 = ax.pcolormesh(redshift_bins, 10**(l_tau_bins), np.log10(hist_eff_ltau))
@@ -451,21 +449,16 @@ def main():
     # add background grid and legend
     _ = ax.grid(which='both', axis='both', alpha=0.3)
 
-    # place plot label
-    x_plotlabel = z_low + (0.05 * (z_hi - z_low))
-    y_plotlabel = 10**(np.log10(yaxis_low) + (0.85 * (np.log10(yaxis_hi) - np.log10(yaxis_low))))
-    _ = ax.annotate(plotlabel, xy=(x_plotlabel, y_plotlabel), fontsize=20)
-
     # place colorbar
-    cbar_ax = fig_efftau.add_axes([0.515, 0.142 , 0.14, 0.015])
-    _ = fig_efftau.colorbar(im0, cax=cbar_ax, orientation="horizontal")
+    cbar_ax = fig.add_axes([0.98, 0.105, 0.04, 0.85])
+    _ = fig.colorbar(im0, cax=cbar_ax, orientation="vertical")
     _ = cbar_ax.yaxis.set_ticks_position('right')
 
     # add colorbar label & ensure no overlap w/ticks
     cbar_str = r"$\log_{10} \rm{P}(\tau_{\rm{med}} | z)$"
-    _ = cbar_ax.set_xlabel(cbar_str)
-    _ = cbar_ax.xaxis.set_label_position('top')
-    _ = cbar_ax.xaxis.labelpad = 5
+    _ = cbar_ax.set_ylabel(cbar_str, rotation=270)
+    _ = cbar_ax.yaxis.set_label_position('right')
+    _ = cbar_ax.yaxis.labelpad = 20
 
     # place redshift label
     _ = ax.set_xlabel(xlabel_str)
@@ -480,7 +473,7 @@ def main():
     if args.fname:
         fName = args.fname
     else:
-        fname = f'efftau_distr.png'
+        fName = f'efftau_distr.png'
     img_fPath = Path(fName)
 
     if args.outdir:
