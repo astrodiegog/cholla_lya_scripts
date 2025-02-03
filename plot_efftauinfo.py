@@ -31,6 +31,10 @@ def create_parser():
 
     parser.add_argument("nOutputsStr", help='String of outputs delimited by comma', type=str)
 
+    parser.add_argument('-f', '--fname', help='Output file name', type=str)
+
+    parser.add_argument('-o', '--outdir', help='Output directory', type=str)
+
     parser.add_argument('-v', '--verbose', help='Print info along the way',
                         action='store_true')
 
