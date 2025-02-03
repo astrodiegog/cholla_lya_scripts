@@ -473,9 +473,40 @@ def main():
     # place yaxis
     _ = ax.set_ylabel(yaxis_label)
 
+    # tighten layout
     _ = fig.tight_layout()
 
-    fig_efftau.savefig(efftau_fImgPath, dpi=256, bbox_inches='tight')
+    # saving time !
+    if args.fname:
+        fName = args.fname
+    else:
+        fname = f'efftau_distr.png'
+    img_fPath = Path(fName)
+
+    if args.outdir:
+        outdir_dirPath = Path(args.outdir)
+        outdir_dirPath = outdir_dirPath.resolve()
+        assert outdir_dirPath.is_dir()
+    else:
+        outdir_dirPath = Path.cwd()
+    img_fPath = outdir_dirPath / img_fPath
+
+    if args.verbose:
+        if args.outdir:
+            print(f"--- We are placing the output file in : {outdir_dirPath} ---")
+        else:
+            print(f"--- No output directory specified, so placing image in CWD: {outdir_dirPath} ---")
+
+        if args.fname:
+            print(f"--- We are saving the plot with file name : {fName} ---")
+        else:
+            print(f"--- No output file name specified, so it will be named : {fName} ---")
+
+
+    _ = fig.savefig(img_fPath, dpi=256, bbox_inches = "tight")
+    plt.close(fig)
+
+
 
 if __name__=="__main__":
     main()
