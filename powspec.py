@@ -648,109 +648,6 @@ class ChollaOnTheFlySkewers:
         return FluxPowerSpectrumHead.get_FPS(local_opticaldepth, precision)
 
 
-
-def P_k_calc(OTFSkewers, dlogk, combine=True, verbose=False, precision=np.float64):
-    '''
-    Calculate the mean transmitted flux power spectrum along each axis and save
-        onto skewer output file
-
-    Args:
-        OTFSkewers (ChollaOnTheFlySkewers): skewers object, interacts with files
-        dlogk (float): differential step in log k-space
-        combine (bool): (optional) whether to combine power spectrum from each axis
-        verbose (bool): (optional) whether to print important information
-        precision (np type): (optional) numpy precision to use in calculations
-    Returns:
-        ...
-    '''
-
-    k_x, P_k_x = OTFSkewers.get_FPS_x(dlogk, precision)
-    k_y, P_k_y = OTFSkewers.get_FPS_y(dlogk, precision)
-    k_z, P_k_z = OTFSkewers.get_FPS_z(dlogk, precision)
-
-    # open file and append each power spectrum as new "PowerSpectrum" group
-    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+') as fObj:
-        PS_group_key = 'PowerSpectrum'
-        if PS_group_key not in fObj.keys():
-            if verbose:
-                print(f'\t...initializing power spectrum group for file {OTFSkewers.OTFSkewersfPath}')
-
-            fObj.create_group(PS_group_key)
-
-        PS_x_avg_key = 'P_x(k_x)'
-        k_x_edges_key = 'k_x_edges'
-        PS_y_avg_key = 'P_y(k_y)'
-        k_y_edges_key = 'k_y_edges'
-        PS_z_avg_key = 'P_z(k_z)'
-        k_z_edges_key = 'k_z_edges'
-
-        # ensure each key is in the PowerSpectrum Group
-        if PS_x_avg_key not in fObj[PS_group_key].keys():
-            if verbose:
-                print(f'\t...initializing empty power spectrum and k mode arrays in x-axis for file {OTFSkewers.OTFSkewersfPath}')
-
-            PS_x_empty = np.zeros(P_k_x.shape, dtype=P_k_x.dtype)
-            k_x_empty = np.zeros(k_x.shape, dtype=k_x.dtype)
-            fObj[PS_group_key].create_dataset(k_x_edges_key, data=k_x_empty)
-            fObj[PS_group_key].create_dataset(PS_x_avg_key, data=PS_x_empty)
-
-        if PS_y_avg_key not in fObj[PS_group_key].keys():
-            if verbose:
-                print(f'\t...initializing empty power spectrum and k mode arrays in y-axis for file {OTFSkewers.OTFSkewersfPath}')
-
-            PS_y_empty = np.zeros(P_k_y.shape, dtype=P_k_y.dtype)
-            k_y_empty = np.zeros(k_y.shape, dtype=k_y.dtype)
-            fObj[PS_group_key].create_dataset(k_y_edges_key, data=k_y_empty)
-            fObj[PS_group_key].create_dataset(PS_y_avg_key, data=PS_y_empty)
-
-        if PS_z_avg_key not in fObj[PS_group_key].keys():
-            if verbose:
-                print(f'\t...initializing empty power spectrum and k mode arrays in z-axis for file {OTFSkewers.OTFSkewersfPath}')
-            PS_z_empty = np.zeros(P_k_z.shape, dtype=P_k_z.dtype)
-            k_z_empty = np.zeros(k_z.shape, dtype=k_z.dtype)
-            fObj[PS_group_key].create_dataset(k_z_edges_key, data=k_z_empty)
-            fObj[PS_group_key].create_dataset(PS_z_avg_key, data=PS_z_empty)
-
-        if verbose:
-            print(f'\t...assigning power spectrum and k edges in each axis file {OTFSkewers.OTFSkewersfPath}')
-        fObj[PS_group_key][k_x_edges_key][:] = k_x[:]
-        fObj[PS_group_key][PS_x_avg_key][:] = P_k_x[:]
-
-        fObj[PS_group_key][k_y_edges_key][:] = k_y[:]
-        fObj[PS_group_key][PS_y_avg_key][:] = P_k_y[:]
-
-        fObj[PS_group_key][k_z_edges_key][:] = k_z[:]
-        fObj[PS_group_key][PS_z_avg_key][:] = P_k_z[:]
-
-        if combine:
-            # before combining power spectrum along each direction, make sure they're of same shape
-            assert np.array_equal(P_k_x.shape, P_k_y.shape)
-            assert np.array_equal(P_k_x.shape, P_k_z.shape)
-
-            # also need to assert that k_xyz are all within some tolerance level
-            # for now assume they're the same, and save k_x by default !
-
-            # combined power spectrum
-            P_k = (P_k_x + P_k_y + P_k_z) / 3.
-            PS_avg_key = 'P(k)'
-            k_edges_key = 'k_edges'
-            if PS_avg_key not in fObj[PS_group_key].keys():
-                if verbose:
-                    print(f'\t...initializing empty power spectrum average and k mode arrays for file {OTFSkewers.OTFSkewersfPath}')
-                PS_empty = np.zeros(P_k.shape, dtype=P_k.dtype)
-                k_empty = np.zeros(k_x.shape, dtype=k_x.dtype)
-                fObj[PS_group_key].create_dataset(k_edges_key, data=k_empty)
-                fObj[PS_group_key].create_dataset(PS_avg_key, data=PS_empty)
-
-            if verbose:
-                print(f'\t...assigning average power spectrum and k edges for file {OTFSkewers.OTFSkewersfPath}')
-            fObj[PS_group_key][k_edges_key][:] = k_x[:]
-            fObj[PS_group_key][PS_avg_key][:] = P_k[:]
-
-    return
-
-
-
 def main():
     '''
     Compute the power spectrum and append to skewer file
@@ -1202,12 +1099,14 @@ def main():
             # grab upper and lower effective optical depths
             optdeptheff_currQuantile_min = optdeptheff_all[quantile_indx[0]]
             optdeptheff_currQuantile_max = optdeptheff_all[quantile_indx[-1]]
+            optdeptheff_currQuantile_mean = np.mean(optdeptheff_all[quantile_indx])
 
             quantile_groupkey = "FluxPowerSpectrum_" + quantile_key
             quantile_group = fObj.create_group(quantile_groupkey)
 
             _ = quantile_group.attrs.create('tau_min', optdeptheff_currQuantile_min)
             _ = quantile_group.attrs.create('tau_max', optdeptheff_currQuantile_max)
+            _ = quantile_group.attrs.create('tau_mean', optdeptheff_currQuantile_mean)
 
             _ = quantile_group.create_dataset('P(k)', data=FPS_currQuantile)
             _ = quantile_group.create_dataset('indices', data=quantile_indx)
