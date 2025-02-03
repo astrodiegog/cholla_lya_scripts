@@ -912,44 +912,47 @@ def main():
         quantile_key = f'quantile_{nquantile:.0f}'
         indices_all_quantiles[quantile_key] = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
     
-        quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+        if args.verbose:
+            quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+            nskews_inquantile = np.sum(indices_all_inbounds_inquantile)
 
-        nskews_inquantile = np.sum(indices_all_inbounds_inquantile)
+            # make masks of the indices that fall within a specific axis
+            quantile_indx_x_mask = quantile_indx < nOutputs * nskewers_x
+            quantile_indx_y_mask = (nskewers_x < nOutputs * quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
+            quantile_indx_z_mask = (nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
 
-        # make masks of the indices that fall within a specific axis
-        quantile_indx_x_mask = quantile_indx < nOutputs * nskewers_x
-        quantile_indx_y_mask = (nskewers_x < nOutputs * quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
-        quantile_indx_z_mask = (nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
+            # apply masks to get indices in each axis
+            quantile_indx_x = quantile_indx[quantile_indx_x_mask]
+            quantile_indx_y = quantile_indx[quantile_indx_y_mask]
+            quantile_indx_z = quantile_indx[quantile_indx_z_mask]
 
-        # apply masks to get indices in each axis
-        quantile_indx_x = quantile_indx[quantile_indx_x_mask]
-        quantile_indx_y = quantile_indx[quantile_indx_y_mask]
-        quantile_indx_z = quantile_indx[quantile_indx_z_mask]
+            # calculate the output number that each index occupies
+            indx_x_nOutput = quantile_indx_x // nskewers_x
+            indx_y_nOutput = (quantile_indx_y - nOutputs * (nskewers_x)) // nskewers_y
+            indx_z_nOutput = (quantile_indx_z - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
 
-        # calculate the output number that each index occupies
-        indx_x_nOutput = quantile_indx_x // nskewers_x
-        indx_y_nOutput = (quantile_indx_y - nOutputs * (nskewers_x)) // nskewers_y
-        indx_z_nOutput = (quantile_indx_z - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
+            print(f"--- Distribution of {nskews_inquantile:.0f} skewers in quantile {nquantile:.0f}  ---")
+            print(f"--- tau = [{optdeptheff_all[quantile_indx[0]]:.4e}, {optdeptheff_all[quantile_indx[-1]]:.4e}] ---")
+            print("--- | n | nOutput | scale factor | redshift | x_skewers | y_skewers | z_skewers |---")
+            for n, nOutput in enumerate(nOutputs_arr):
+                indx_x_currQuantile_currOutput_mask = indx_x_nOutput == n
+                indx_y_currQuantile_currOutput_mask = indx_y_nOutput == n
+                indx_z_currQuantile_currOutput_mask = indx_z_nOutput == n
+                curr_str = f"--- | {n:.0f} | {nOutput:.0f} | {scale_factors[n]:.4f} | {redshifts[n]:.4f} | "
+                curr_str += f"{100. * np.sum(indx_x_currQuantile_currOutput_mask) / nskews_inquantile:.4f} % | "
+                curr_str += f"{100. * np.sum(indx_y_currQuantile_currOutput_mask) / nskews_inquantile:.4f} % | "
+                curr_str += f"{100. * np.sum(indx_z_currQuantile_currOutput_mask) / nskews_inquantile:.4f} % | ---"
+                print(curr_str)
+            print("\n")
 
-
-        print(f"--- Distribution of {nskews_inquantile:.0f} skewers in quantile {nquantile:.0f}  ---")
-        print(f"--- tau = [{optdeptheff_all[quantile_indx[0]]:.4e}, {optdeptheff_all[quantile_indx[-1]]:.4e}] ---")
-        print("--- | n | nOutput | scale factor | redshift | x_skewers | y_skewers | z_skewers |---")
-        for n, nOutput in enumerate(nOutputs_arr):
-            curr_str = f"--- | {n:.0f} | {nOutput:.0f} | {scale_factors[n]:.4f} | {redshifts[n]:.4f} | "
-            curr_str += f"{100. * np.sum(indx_x_nOutput == n) / nskews_inquantile:.4f} % | "
-            curr_str += f"{100. * np.sum(indx_y_nOutput == n) / nskews_inquantile:.4f} % | "
-            curr_str += f"{100. * np.sum(indx_z_nOutput == n) / nskews_inquantile:.4f} % | ---"
-            print(curr_str)
-        print("\n")
-
-
-    
     indices_out_quantiles = np.argwhere(~optdeptheff_all_inbounds_mask)
-    nskews_outquantiles = np.sum(~optdeptheff_all_inbounds_mask)
+    nskews_outquantiles = np.sum(~optdeptheff_all_inbounds_mask) 
 
-    print(f"--- We have {nskews_outquantiles:.0f} / {nskewers_tot * nOutputs:.0f} = {100 * nskews_outquantiles / (nskewers_tot * nOutputs):.0f} % skewers outside of bounds ---")
-    if nskews_outquantiles:
+    if args.verbose and nskews_outquantiles:
+        curr_str = f"--- We have {nskews_outquantiles:.0f} / {nskewers_tot * nOutputs:.0f} = "
+        curr_str += f"{100 * nskews_outquantiles / (nskewers_tot * nOutputs):.0f} % skewers outside of bounds ---"
+        print(curr_str)
+
         # calculate the output number that each index occupies
         indx_x_out = indices_out_quantiles // nskewers_x
         indx_y_out = (indices_out_quantiles - nOutputs * (nskewers_x)) // nskewers_y
@@ -958,10 +961,13 @@ def main():
         print("--- | n | nOutput | scale factor | redshift | x_skewers | y_skewers | z_skewers |---")
         # get indices of those outside the range and print info here
         for n, nOutput in enumerate(nOutputs_arr):
+            indx_x_out_currOutput_mask = indx_x_out == n
+            indx_y_out_currOutput_mask = indx_y_out == n
+            indx_z_out_currOutput_mask = indx_z_out == n
             curr_str = f"--- | {n:.0f} | {nOutput:.0f} | {scale_factors[n]:.4f} | {redshifts[n]:.4f} | "
-            curr_str += f"{100. * np.sum(indx_x_out == n) / nskews_outquantiles:.4f} % | "
-            curr_str += f"{100. * np.sum(indx_y_out == n) / nskews_outquantiles:.4f} % | "
-            curr_str += f"{100. * np.sum(indx_z_out == n) / nskews_outquantiles:.4f} % | ---"
+            curr_str += f"{100. * np.sum(indx_x_out_currOutput_mask) / nskews_outquantiles:.4f} % | "
+            curr_str += f"{100. * np.sum(indx_y_out_currOutput_mask) / nskews_outquantiles:.4f} % | "
+            curr_str += f"{100. * np.sum(indx_z_out_currOutput_mask) / nskews_outquantiles:.4f} % | ---"
             print(curr_str)
         print("\n")
 
@@ -979,8 +985,6 @@ def main():
         dvHubbles_y[n] = chSnapCosmoHead.dvHubble(dy)
         dvHubbles_z[n] = chSnapCosmoHead.dvHubble(dz)
 
-    print("dvHubbles", dvHubbles_x)
-
     dvHubblex_min, dvHubblex_max = np.min(dvHubbles_x), np.max(dvHubbles_x)
     dvHubbley_min, dvHubbley_max = np.min(dvHubbles_y), np.max(dvHubbles_y)
     dvHubblez_min, dvHubblez_max = np.min(dvHubbles_z), np.max(dvHubbles_z)
@@ -992,26 +996,26 @@ def main():
     l_kmin = np.log10( (2. * np.pi) / u_max)
     l_kmax = np.log10( (2. * np.pi) / dvHubble_min)
 
-    print("dvHubble min:", dvHubble_min)
-    print("dvHubble max:", dvHubble_max)
-
-    print("l_kmin: ", l_kmin)
-    print("l_kmax: ", l_kmax)
+    if args.verbose:
+        print("dvHubble min:", dvHubble_min)
+        print("dvHubble max:", dvHubble_max)
+        print("l_kmin: ", l_kmin)
+        print("l_kmax: ", l_kmax)
+        print("u_max: ", u_max)
 
     # create k value edges for inclusive power spectrum
     n_bins = int(1 + ((l_kmax - l_kmin) / args.dlogk))
     iter_arr = np.arange(n_bins + 1)
     kedges = np.zeros(n_bins+1, dtype=precision)
     kedges[:] = 10**(l_kmin + (args.dlogk * iter_arr))  
- 
 
-    # create flux power spectrum for each quantile
+    # initialize flux power spectrum for each quantile
     FPS_all_quantiles = {}
-
     for nquantile in range(args.nquantiles):
         quantile_key = f'quantile_{nquantile:.0f}'
         FPS_all_quantiles[quantile_key] = np.zeros(n_bins, dtype=precision)
 
+    # create flux power spectrum for each quantile
     for n, nOutput in enumerate(nOutputs_arr):
         # create Flux Power Spectrum object
         FPSHead_x = ChollaFluxPowerSpectrumHead(nCells[0], dvHubbles_x[n])
@@ -1063,9 +1067,12 @@ def main():
         tau_local_y = OTFSkewers_y.get_skeweralldata('taucalc_local', dtype=precision)
         tau_local_z = OTFSkewers_z.get_skeweralldata('taucalc_local', dtype=precision)      
 
-        print(f'--- Distribution of skewers in nOutput {nOutput} / scale factor:  {scale_factors[n]:.4f} / redshift: {redshifts[n]:.4f} --- ')
- 
-        print(f'--- | nquantile | x_skewers | y_skewers | z_skewers | ---')
+        if args.verbose:
+            curr_str = f'--- Distribution of skewers in nOutput {nOutput} / scale factor: '
+            curr_str += f'{scale_factors[n]:.4f} / redshift: {redshifts[n]:.4f} --- ' 
+            print(curr_str)
+            print(f'--- | nquantile | x_skewers | y_skewers | z_skewers | ---')
+
         for nquantile in range(args.nquantiles):
             indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
             quantile_key = f'quantile_{nquantile:.0f}'
@@ -1095,11 +1102,12 @@ def main():
             indx_y_currQuantile_currOutput = indx_y_currQuantile[indx_y_currQuantile_currOutput_mask]
             indx_z_currQuantile_currOutput = indx_z_currQuantile[indx_z_currQuantile_currOutput_mask]
 
-            curr_str = f"--- | {nquantile:.0f} | "
-            curr_str += f"{100 * np.sum(indx_x_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | "
-            curr_str += f"{100 * np.sum(indx_y_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | "
-            curr_str += f"{100 * np.sum(indx_z_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | --- "
-            print(curr_str)
+            if args.verbose:
+                curr_str = f"--- | {nquantile:.0f} | "
+                curr_str += f"{100 * np.sum(indx_x_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | "
+                curr_str += f"{100 * np.sum(indx_y_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | "
+                curr_str += f"{100 * np.sum(indx_z_currQuantile_currOutput_mask) / nskewers_tot:.4f} % | --- "
+                print(curr_str)
 
             # convert the index into a skewer id to index into local optical depth array
             skewid_currQuantile_currOutput_x = indx_x_currQuantile_currOutput % nskewers_x 
@@ -1137,12 +1145,8 @@ def main():
             # place FPS from current output's quantile
             FPS_all_quantiles[quantile_key] += FPS_currQuantile
         
-        if nskews_outquantiles:
+        if args.verbose and nskews_outquantiles:
             # calculate the output number that each index occupies
-            indx_x_out = indices_out_quantiles // nskewers_x
-            indx_y_out = (indices_out_quantiles - nOutputs * (nskewers_x)) // nskewers_y
-            indx_z_out = (indices_out_quantiles - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
-           
             indx_x_out_currOutput_mask = indx_x_out == n
             indx_y_out_currOutput_mask = indx_y_out == n
             indx_z_out_currOutput_mask = indx_z_out == n
@@ -1154,17 +1158,10 @@ def main():
 
         print('\n')
 
-
-    for nquantile in range(args.nquantiles):
-        quantile_key = f'quantile_{nquantile:.0f}'
-        print(FPS_all_quantiles[quantile_key])
-    
-
     # write data to where skewer directory resides
     skewerParent_dirPath = skewer_dirPath.parent.resolve()
     outfile_fname = f"fluxpowerspectrum_optdepthbin.h5"
     outfile_fPath = skewerParent_dirPath / Path(outfile_fname)
-
 
     with h5py.File(outfile_fPath, 'w-') as fObj:
         # place attributes
