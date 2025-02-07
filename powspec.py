@@ -203,7 +203,6 @@ class ChollaFluxPowerSpectrumHead:
 
         self.l_kmin = np.log10( (2. * np.pi) / (self.u_max) )
         self.l_kmax = np.log10( (2. * np.pi * (self.n_fft - 1.) ) / (self.u_max) )
-        self.l_kstart = np.log10(0.99) + self.l_kmin
 
 
     def get_kvals_fft(self, dtype=np.float32):
@@ -223,13 +222,14 @@ class ChollaFluxPowerSpectrumHead:
 
         return kcenters_fft
 
-    def get_FPS(self, local_opticaldepths, precision=np.float64):
+    def get_FPS(self, local_opticaldepths, mean_flux=None, precision=np.float64):
         '''
         Return the Flux Power Spectrum given the local optical depths.
             Expect 2-D array of shape (number skewers, line-of-sight cells)
 
         Args:
             local_opticaldepths (arr): local optical depths of all skewers
+            mean_flux (float): mean flux to scale deviations
             precision (np type): (optional) numpy precision to use
         Return:
             kmode_fft (arr): Fourier Transform k mode array
@@ -242,7 +242,10 @@ class ChollaFluxPowerSpectrumHead:
 
         # calculate local transmitted flux (& its mean)
         fluxes = np.exp(-local_opticaldepths)
-        flux_mean = np.mean(fluxes)
+        if mean_flux:
+            flux_mean = mean_flux
+        else:
+            flux_mean = np.mean(fluxes)
 
         # initialize total power array & delta F avg arrays
         delta_F_avg = np.zeros(self.n_fft , dtype=precision)
@@ -804,42 +807,119 @@ def main():
 
     # create index directories for each quantile. may not have same number of skewers in each quantile
     indices_all_quantiles = {}
+
+    # calculate the mean flux in each quantile
+    meanF_all_quantiles = {}
     for nquantile in range(args.nquantiles):
         indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
         quantile_key = f'quantile_{nquantile:.0f}'
         indices_all_quantiles[quantile_key] = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
     
+        quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+        nskews_inquantile = np.sum(indices_all_inbounds_inquantile)
+        
+        # make masks of the indices that fall within a specific axis
+        quantile_indx_x_mask = quantile_indx < nOutputs * (nskewers_x)
+        quantile_indx_y_mask = ( nOutputs * (nskewers_x) < quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
+        quantile_indx_z_mask = ( nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
+
+        nskewsx_inquantile = np.sum(quantile_indx_x_mask)
+        nskewsy_inquantile = np.sum(quantile_indx_y_mask)
+        nskewsz_inquantile = np.sum(quantile_indx_z_mask)
+
+        # apply masks to get indices in each axis
+        indx_x_currQuantile = quantile_indx[quantile_indx_x_mask]
+        indx_y_currQuantile = quantile_indx[quantile_indx_y_mask]
+        indx_z_currQuantile = quantile_indx[quantile_indx_z_mask]
+
+        # calculate the output number that each index occupies
+        indx_x_currQuantile_nOutput = indx_x_currQuantile // nskewers_x
+        indx_y_currQuantile_nOutput = (indx_y_currQuantile - nOutputs * (nskewers_x)) // nskewers_y
+        indx_z_currQuantile_nOutput = (indx_z_currQuantile - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
+
         if args.verbose:
-            quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
-            nskews_inquantile = np.sum(indices_all_inbounds_inquantile)
-
-            # make masks of the indices that fall within a specific axis
-            quantile_indx_x_mask = quantile_indx < nOutputs * nskewers_x
-            quantile_indx_y_mask = (nskewers_x < nOutputs * quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
-            quantile_indx_z_mask = (nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
-
-            # apply masks to get indices in each axis
-            quantile_indx_x = quantile_indx[quantile_indx_x_mask]
-            quantile_indx_y = quantile_indx[quantile_indx_y_mask]
-            quantile_indx_z = quantile_indx[quantile_indx_z_mask]
-
-            # calculate the output number that each index occupies
-            indx_x_nOutput = quantile_indx_x // nskewers_x
-            indx_y_nOutput = (quantile_indx_y - nOutputs * (nskewers_x)) // nskewers_y
-            indx_z_nOutput = (quantile_indx_z - nOutputs * (nskewers_x + nskewers_y))  // nskewers_z
-
             print(f"--- Distribution of {nskews_inquantile:.0f} skewers in quantile {nquantile:.0f}  ---")
             print(f"--- tau = [{optdeptheff_all[quantile_indx[0]]:.4e}, {optdeptheff_all[quantile_indx[-1]]:.4e}] ---")
-            print("--- | n | nOutput | scale factor | redshift | x_skewers | y_skewers | z_skewers |---")
-            for n, nOutput in enumerate(nOutputs_arr):
-                indx_x_currQuantile_currOutput_mask = indx_x_nOutput == n
-                indx_y_currQuantile_currOutput_mask = indx_y_nOutput == n
-                indx_z_currQuantile_currOutput_mask = indx_z_nOutput == n
+            print("--- | n | nOutput | scale factor | redshift | x_skewers | y_skewers | z_skewers | ---")
+
+        # create an array for all local optical depths along an axis
+        tau_local_x_inquantile = np.zeros(int(nskewsx_inquantile * nCells[0]))
+        tau_local_y_inquantile = np.zeros(int(nskewsy_inquantile * nCells[1]))
+        tau_local_z_inquantile = np.zeros(int(nskewsz_inquantile * nCells[2]))        
+
+        nskewsx_counter = 0
+        nskewsy_counter = 0
+        nskewsz_counter = 0
+
+        for n, nOutput in enumerate(nOutputs_arr):
+            # grab only indices in output
+            indx_x_currQuantile_currOutput_mask = indx_x_currQuantile_nOutput == n
+            indx_y_currQuantile_currOutput_mask = indx_y_currQuantile_nOutput == n
+            indx_z_currQuantile_currOutput_mask = indx_z_currQuantile_nOutput == n
+
+            indx_x_currQuantile_currOutput = indx_x_currQuantile[indx_x_currQuantile_currOutput_mask]
+            indx_y_currQuantile_currOutput = indx_y_currQuantile[indx_y_currQuantile_currOutput_mask]
+            indx_z_currQuantile_currOutput = indx_z_currQuantile[indx_z_currQuantile_currOutput_mask]
+
+            # calculate the number of skewers that land in this quantile in this output
+            nskewsx_inOutput_inQuantile = np.sum(indx_x_currQuantile_currOutput_mask)
+            nskewsy_inOutput_inQuantile = np.sum(indx_y_currQuantile_currOutput_mask)
+            nskewsz_inOutput_inQuantile = np.sum(indx_z_currQuantile_currOutput_mask)
+
+            if args.verbose:
                 curr_str = f"--- | {n:.0f} | {nOutput:.0f} | {scale_factors[n]:.4f} | {redshifts[n]:.4f} | "
-                curr_str += f"{100. * np.sum(indx_x_currQuantile_currOutput_mask) / nskews_inquantile:.4f} % | "
-                curr_str += f"{100. * np.sum(indx_y_currQuantile_currOutput_mask) / nskews_inquantile:.4f} % | "
-                curr_str += f"{100. * np.sum(indx_z_currQuantile_currOutput_mask) / nskews_inquantile:.4f} % | ---"
+                curr_str += f"{100. * nskewsx_inOutput_inQuantile / nskews_inquantile:.4f} % | "
+                curr_str += f"{100. * nskewsy_inOutput_inQuantile / nskews_inquantile:.4f} % | "
+                curr_str += f"{100. * nskewsz_inOutput_inQuantile / nskews_inquantile:.4f} % | ---"
+
                 print(curr_str)
+
+            if not (nskewsx_inOutput_inQuantile or nskewsy_inOutput_inQuantile or nskewsz_inOutput_inQuantile):
+                continue
+
+            # convert the index into a skewer id to index into local optical depth array
+            skewid_currQuantile_currOutput_x = indx_x_currQuantile_currOutput % nskewers_x
+            skewid_currQuantile_currOutput_y = indx_y_currQuantile_currOutput % nskewers_y
+            skewid_currQuantile_currOutput_z = indx_z_currQuantile_currOutput % nskewers_z
+
+            # create ChollaOTFSkewers object to grab local optical depths
+            skewer_fname = f"{nOutput:.0f}_skewers.h5"
+            skewer_fPath = skewer_dirPath / Path(skewer_fname)
+            OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
+            OTFSkewers_x = OTFSkewers.get_skewersx_obj()
+            OTFSkewers_y = OTFSkewers.get_skewersy_obj()
+            OTFSkewers_z = OTFSkewers.get_skewersz_obj()
+
+            tau_local_x = OTFSkewers_x.get_skeweralldata('taucalc_local', dtype=precision)
+            tau_local_y = OTFSkewers_y.get_skeweralldata('taucalc_local', dtype=precision)
+            tau_local_z = OTFSkewers_z.get_skeweralldata('taucalc_local', dtype=precision)
+
+            # grab current output local optical depth in quantile
+            tau_local_x_currQuantile_currOutput = tau_local_x[skewid_currQuantile_currOutput_x, :]
+            tau_local_y_currQuantile_currOutput = tau_local_y[skewid_currQuantile_currOutput_y, :]
+            tau_local_z_currQuantile_currOutput = tau_local_z[skewid_currQuantile_currOutput_z, :]
+
+            # place local taus from current output into quantile array
+            tau_local_x_inquantile[ int(nskewsx_counter * nCells[0]) : int((nskewsx_counter + nskewsx_inOutput_inQuantile) * nCells[0]) ] = tau_local_x_currQuantile_currOutput.flatten()
+            tau_local_y_inquantile[ int(nskewsy_counter * nCells[1]) : int((nskewsy_counter + nskewsy_inOutput_inQuantile) * nCells[1]) ] = tau_local_y_currQuantile_currOutput.flatten()
+            tau_local_z_inquantile[ int(nskewsz_counter * nCells[2]) : int((nskewsz_counter + nskewsz_inOutput_inQuantile) * nCells[2]) ] = tau_local_z_currQuantile_currOutput.flatten()
+
+            nskewsx_counter += nskewsx_inOutput_inQuantile
+            nskewsy_counter += nskewsy_inOutput_inQuantile
+            nskewsz_counter += nskewsz_inOutput_inQuantile       
+ 
+
+        nCells_inquantile = (nskewsx_inquantile * nCells[0]) + (nskewsy_inquantile * nCells[1]) + (nskewsz_inquantile * nCells[2])
+        tau_local_inquantile = np.zeros(int(nCells_inquantile))
+        tau_local_inquantile[ : int(nskewsx_inquantile * nCells[0]) ] = tau_local_x_inquantile
+        tau_local_inquantile[int(nskewsx_inquantile * nCells[0]) :int((nskewsx_inquantile * nCells[0]) + (nskewsy_inquantile * nCells[1])) ] = tau_local_y_inquantile
+        tau_local_inquantile[int((nskewsx_inquantile * nCells[0]) + (nskewsy_inquantile * nCells[1]) ): ] = tau_local_z_inquantile
+        
+        fluxes_local = np.exp(- tau_local_inquantile)
+        meanF_all_quantiles[quantile_key] = np.mean(fluxes_local)
+
+        if args.verbose:
+            print(f"--- Mean Flux : {meanF_all_quantiles[quantile_key]:.4e} ---")
             print("\n")
 
     indices_out_quantiles = np.argwhere(~optdeptheff_all_inbounds_mask)
@@ -901,16 +981,24 @@ def main():
         print("u_max: ", u_max)
 
     # create k value edges for inclusive power spectrum
-    n_bins = int(1 + ((l_kmax - l_kmin) / args.dlogk))
+    n_bins = int((l_kmax - l_kmin) / args.dlogk)
     iter_arr = np.arange(n_bins + 1)
     kedges = np.zeros(n_bins+1, dtype=precision)
     kedges[:] = 10**(l_kmin + (args.dlogk * iter_arr))  
 
-    # initialize flux power spectrum for each quantile
+    # initialize flux power spectrum and create mean flux for each quantile
     FPS_all_quantiles = {}
+    FPS_nOutputs_quantiles = {}
     for nquantile in range(args.nquantiles):
         quantile_key = f'quantile_{nquantile:.0f}'
         FPS_all_quantiles[quantile_key] = np.zeros(n_bins, dtype=precision)
+        indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
+        quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+        FPS_nOutputs_quantiles[quantile_key] = {}
+
+    fft_kvals_nOutput = []
+    fft_binids_nOutput = []
+    fft_nbins_nOutput = []
 
     # create flux power spectrum for each quantile
     for n, nOutput in enumerate(nOutputs_arr):
@@ -932,6 +1020,10 @@ def main():
         fft_nbins_kedges_x = np.zeros(n_bins, dtype=precision)
         for fft_bin_id in fft_binids_x[1:]:
             fft_nbins_kedges_x[fft_bin_id] += 1.
+        
+        fft_kvals_nOutput.append(kvals_fft_x)
+        fft_binids_nOutput.append(fft_binids_x)
+        fft_nbins_nOutput.append(fft_nbins_kedges_x)
 
         fft_binids_float_y = (np.log10(kvals_fft_y) - l_kmin ) / args.dlogk
         fft_binids_y = np.zeros(FPSHead_y.n_fft, dtype=np.int64)
@@ -974,11 +1066,15 @@ def main():
             indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
             quantile_key = f'quantile_{nquantile:.0f}'
             quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
+            # initialize
+            FPS_nOutputs_quantiles[quantile_key][f'FPSx_nOutput_{nOutput:.0f}'] = np.zeros(FPSHead_x.n_fft)
+            FPS_nOutputs_quantiles[quantile_key][f'FPSy_nOutput_{nOutput:.0f}'] = np.zeros(FPSHead_y.n_fft)
+            FPS_nOutputs_quantiles[quantile_key][f'FPSz_nOutput_{nOutput:.0f}'] = np.zeros(FPSHead_z.n_fft)
 
             # make masks of the indices that fall within a specific axis
-            quantile_indx_x_mask = quantile_indx < nOutputs * nskewers_x
-            quantile_indx_y_mask = (nskewers_x < nOutputs * quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
-            quantile_indx_z_mask = (nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
+            quantile_indx_x_mask = quantile_indx < nOutputs * (nskewers_x)
+            quantile_indx_y_mask = ( nOutputs * (nskewers_x) < quantile_indx) & (quantile_indx < nOutputs * (nskewers_x + nskewers_y))
+            quantile_indx_z_mask = ( nOutputs * (nskewers_x + nskewers_y) < quantile_indx)
 
             # apply masks to get indices in each axis
             indx_x_currQuantile = quantile_indx[quantile_indx_x_mask]
@@ -1023,21 +1119,27 @@ def main():
             # to add FPS, 3) average by num of fft bins in that kedge bin. IF there are local tau
             if tau_local_x_currQuantile_currOutput.size:
                 _, FPS_currQuantile_x = FPSHead_x.get_FPS(tau_local_x_currQuantile_currOutput,
+                                                          mean_flux=meanF_all_quantiles[quantile_key], 
                                                           precision=precision)
                 FPS_currQuantile[fft_binids_x[1:]] += FPS_currQuantile_x[1:]
                 FPS_currQuantile /= fft_nbins_kedges_x
+                FPS_nOutputs_quantiles[quantile_key][f'FPSx_nOutput_{nOutput:.0f}'] += FPS_currQuantile_x
 
             if tau_local_y_currQuantile_currOutput.size:
                 _, FPS_currQuantile_y = FPSHead_y.get_FPS(tau_local_y_currQuantile_currOutput,
+                                                          mean_flux=meanF_all_quantiles[quantile_key],
                                                           precision=precision)
                 FPS_currQuantile[fft_binids_y[1:]] += FPS_currQuantile_y[1:]
                 FPS_currQuantile /= fft_nbins_kedges_y
+                FPS_nOutputs_quantiles[quantile_key][f'FPSy_nOutput_{nOutput:.0f}'] += FPS_currQuantile_y
 
             if tau_local_z_currQuantile_currOutput.size:
                 _, FPS_currQuantile_z = FPSHead_z.get_FPS(tau_local_z_currQuantile_currOutput,
+                                                          mean_flux=meanF_all_quantiles[quantile_key],
                                                           precision=precision)
                 FPS_currQuantile[fft_binids_z[1:]] += FPS_currQuantile_z[1:]
                 FPS_currQuantile /= fft_nbins_kedges_z
+                FPS_nOutputs_quantiles[quantile_key][f'FPSz_nOutput_{nOutput:.0f}'] += FPS_currQuantile_z
 
             # place FPS from current output's quantile
             FPS_all_quantiles[quantile_key] += FPS_currQuantile
@@ -1053,14 +1155,40 @@ def main():
             curr_str += f"{100 * np.sum(indx_z_out_currOutput_mask) / nskewers_tot:.4f} % | "
             print(curr_str)
 
+            print('\n')
+
+    _ = '''
+    for n, nOutput in enumerate(nOutputs_arr):
+        fft_binids = fft_binids_nOutput[n]
+        fft_kvals = fft_kvals_nOutput[n]
+        print(f"--- nOutput {nOutput:.0f} ---")
+        for n_fft in range(1, FPSHead_x.n_fft-1):
+            print(f"fftid: {n_fft:.0f} \t binid: {fft_binids[n_fft]:.0f} \t kval: {fft_kvals[n_fft]:.4e} \t kedge: {kedges[fft_binids[n_fft]]:.4e} \t kedge+1: {kedges[fft_binids[n_fft + 1]]:.4e}")
         print('\n')
+
+    curr_str = "--- | kedge | kedge+1 | "
+    for n, nOutput in enumerate(nOutputs_arr):
+        curr_str += f" nOutput - {nOutput:.0f} |"
+    curr_str += "---"    
+    print(curr_str)
+
+    for nbin in range(n_bins):
+        curr_str = f"--- | {kedges[nbin]:.4e} | {kedges[nbin+1]:.4e} | "
+        for n, nOutput in enumerate(nOutputs_arr):
+            fft_nbins = fft_nbins_nOutput[n]
+            curr_str += f" {fft_nbins[nbin]:.0f} |"
+        curr_str += " ---"
+        print(curr_str)
+    '''
+ 
+    
 
     # write data to where skewer directory resides
     skewerParent_dirPath = skewer_dirPath.parent.resolve()
     outfile_fname = f"fluxpowerspectrum_optdepthbin.h5"
     outfile_fPath = skewerParent_dirPath / Path(outfile_fname)
 
-    with h5py.File(outfile_fPath, 'w-') as fObj:
+    with h5py.File(outfile_fPath, 'w') as fObj:
         # place attributes
         # start with cosmo info
         _ = fObj.attrs.create('Omega_R', Omega_R)
@@ -1081,6 +1209,7 @@ def main():
         # output info
         _ = fObj.attrs.create('redshifts', redshifts)
         _ = fObj.attrs.create('scale_factors', scale_factors)
+        _ = fObj.attrs.create('nOutputs', nOutputs_arr)
 
         # analysis info
         _ = fObj.attrs.create('dlogk', args.dlogk)
@@ -1095,6 +1224,7 @@ def main():
             quantile_key = f'quantile_{nquantile:.0f}'
             quantile_indx = indices_all_optdepthsort_inbounds[indices_all_inbounds_inquantile]
             FPS_currQuantile = FPS_all_quantiles[quantile_key]
+            FPS_nOutputs_currQuantile = FPS_nOutputs_quantiles[quantile_key]
 
             # grab upper and lower effective optical depths
             optdeptheff_currQuantile_min = optdeptheff_all[quantile_indx[0]]
@@ -1110,6 +1240,15 @@ def main():
 
             _ = quantile_group.create_dataset('P(k)', data=FPS_currQuantile)
             _ = quantile_group.create_dataset('indices', data=quantile_indx)
+
+            for n, nOutput in enumerate(nOutputs_arr):
+                FPSx_nOutput = FPS_nOutputs_quantiles[quantile_key][f'FPSx_nOutput_{nOutput:.0f}']
+                FPSy_nOutput = FPS_nOutputs_quantiles[quantile_key][f'FPSy_nOutput_{nOutput:.0f}']
+                FPSz_nOutput = FPS_nOutputs_quantiles[quantile_key][f'FPSz_nOutput_{nOutput:.0f}']
+                _ = quantile_group.create_dataset(f'FPSx_nOutput_{nOutput:.0f}', data=FPSx_nOutput)
+                _ = quantile_group.create_dataset(f'FPSy_nOutput_{nOutput:.0f}', data=FPSy_nOutput)
+                _ = quantile_group.create_dataset(f'FPSz_nOutput_{nOutput:.0f}', data=FPSz_nOutput)
+
 
 #placebo: check Lambda-CDM. split into different tau. normalization of the power spectra knows about tau, soi
 

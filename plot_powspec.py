@@ -35,7 +35,8 @@ def create_parser():
 
     parser.add_argument('-o', '--outdir', help='Output directory', type=str)
 
-    parser.add_argument('-a', '--saveall', help='Whether to save all quantile', type=str)
+    parser.add_argument('-a', '--saveall', help='Whether to save all quantile', 
+                        action='store_true')
 
     parser.add_argument('-v', '--verbose', help='Print info along the way',
                         action='store_true')
@@ -65,7 +66,7 @@ def main():
         if args.outdir:
             print(f"--- We are placing the output files in : {args.outdir} ---")
         else:
-            print(f"--- No output directory specified, so placing images in CWD ---")
+            print(f"--- No output directory specified, so placing image in same directory as file ---")
 
         if args.saveall:
             print(f"--- We are saving all quantile plots ---")
@@ -74,14 +75,15 @@ def main():
 
     precision = np.float64
 
+    analysis_fPath = Path(args.FPS_optdepthbin_fname).resolve()
+
     if args.outdir:
         outdir_dirPath = Path(args.outdir)
         outdir_dirPath = outdir_dirPath.resolve()
         assert outdir_dirPath.is_dir()
     else:
-        outdir_dirPath = Path.cwd()
-
-    analysis_fPath = Path(args.FPS_optdepthbin_fname).resolve()
+        # write data to where skewer directory resides
+        outdir_dirPath = analysis_fPath.parent.resolve()
 
     optdepth_mean = np.array([])
     lines_powspec = []
@@ -127,7 +129,7 @@ def main():
                 ylow, yupp = 1.e-3, 1.e1
                 _ = ax.set_ylim(ylow, yupp)
 
-                xlow, xupp = 1e-3, 5e-2
+                xlow, xupp = 1e-3, 1e-1
                 _ = ax.set_xlim(xlow, xupp)
 
                 # set log-scale
@@ -153,7 +155,7 @@ def main():
 
 
     # combine power spectra to a LineCollection object
-    linescollec_powspec = LineCollection(lines_powspec, array=l_optdepth_mean, cmap='rainbow')
+    linescollec_powspec = LineCollection(lines_powspec, array=l_optdepth_mean, cmap='rainbow', alpha=0.7)
 
     if args.verbose:
         print("Plotting combined Flux Power Spectra")
@@ -171,7 +173,7 @@ def main():
     ylow, yupp = 1.e-3, 1.e1
     _ = ax.set_ylim(ylow, yupp)
 
-    xlow, xupp = 1e-3, 5e-2
+    xlow, xupp = 1e-3, 1e-1
     _ = ax.set_xlim(xlow, xupp)
 
     # set log-scale
