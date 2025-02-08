@@ -607,8 +607,9 @@ class ChollaOnTheFlySkewer:
         Returns:
             arr (arr): HI density
         '''
+        HI_str = 'HI_density'
 
-        return self.get_skewerdata(self.HI_str, dtype=dtype)
+        return self.get_skewerdata(HI_str, dtype=dtype)
 
     def get_losvelocity(self, dtype=np.float32):
         '''
@@ -619,8 +620,9 @@ class ChollaOnTheFlySkewer:
         Returns:
             arr (arr): line-of-sight velocity
         '''
+        vel_str = 'los_velocity'
 
-        return self.get_skewerdata(self.vel_str, dtype=dtype)
+        return self.get_skewerdata(vel_str, dtype=dtype)
 
     def get_temperature(self, dtype=np.float32):
         '''
@@ -631,8 +633,9 @@ class ChollaOnTheFlySkewer:
         Returns:
             arr (arr): temperature
         '''
+        temp_str = 'temperature'
 
-        return self.get_skewerdata(self.temp_str, dtype=dtype)
+        return self.get_skewerdata(temp_str, dtype=dtype)
 
 
 class ChollaOnTheFlySkewers_iHead:
