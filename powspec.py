@@ -1117,6 +1117,7 @@ def main():
 
             # for each axis: 1) compute flux power spectrum in quantile, 2) use fft to kedge bin map
             # to add FPS, 3) average by num of fft bins in that kedge bin. IF there are local tau
+            nFPSaxes_added = 0
             if tau_local_x_currQuantile_currOutput.size:
                 _, FPS_currQuantile_x = FPSHead_x.get_FPS(tau_local_x_currQuantile_currOutput,
                                                           mean_flux=meanF_all_quantiles[quantile_key], 
@@ -1124,6 +1125,7 @@ def main():
                 _ = np.add.at(FPS_currQuantile, fft_binids_x[1:], FPS_currQuantile_x[1:])
                 FPS_currQuantile /= fft_nbins_kedges_x
                 FPS_nOutputs_quantiles[quantile_key][f'FPSx_nOutput_{nOutput:.0f}'] += FPS_currQuantile_x
+                nFPSaxes_added += 1
 
             if tau_local_y_currQuantile_currOutput.size:
                 _, FPS_currQuantile_y = FPSHead_y.get_FPS(tau_local_y_currQuantile_currOutput,
@@ -1132,6 +1134,7 @@ def main():
                 _ = np.add.at(FPS_currQuantile, fft_binids_y[1:], FPS_currQuantile_y[1:])
                 FPS_currQuantile /= fft_nbins_kedges_y
                 FPS_nOutputs_quantiles[quantile_key][f'FPSy_nOutput_{nOutput:.0f}'] += FPS_currQuantile_y
+                nFPSaxes_added += 1
 
             if tau_local_z_currQuantile_currOutput.size:
                 _, FPS_currQuantile_z = FPSHead_z.get_FPS(tau_local_z_currQuantile_currOutput,
@@ -1140,9 +1143,10 @@ def main():
                 _ = np.add.at(FPS_currQuantile, fft_binids_z[1:], FPS_currQuantile_z[1:])
                 FPS_currQuantile /= fft_nbins_kedges_z
                 FPS_nOutputs_quantiles[quantile_key][f'FPSz_nOutput_{nOutput:.0f}'] += FPS_currQuantile_z
+                nFPSaxes_added += 1
 
             # place FPS from current output's quantile
-            FPS_all_quantiles[quantile_key] += FPS_currQuantile
+            FPS_all_quantiles[quantile_key] += (FPS_currQuantile / nFPSaxes_added)
         
         if args.verbose and nskews_outquantiles:
             # calculate the output number that each index occupies
