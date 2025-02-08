@@ -531,7 +531,6 @@ def plotFluxPowerSpectra_RelDiff(ax, k_model, Pk_model, Pk_tests, label_tests, l
 
     # add x lims
     xlow, xupp = 1e-3, 5e-2
-    xlow, xupp = 1e-3, 6e-1
     _ = ax.set_xlim(xlow, xupp)
 
     # set x log-scale
@@ -661,7 +660,6 @@ def main():
 
     # add redshift str
     xlow, xupp = 1e-3, 5e-2
-    xlow, xupp = 1e-3, 6e-1
     redshift_str = rf"$z = {OTFSkewers.current_z:.4f}$"
     x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
     if args.logspace:
