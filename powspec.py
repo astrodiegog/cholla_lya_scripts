@@ -1121,7 +1121,7 @@ def main():
                 _, FPS_currQuantile_x = FPSHead_x.get_FPS(tau_local_x_currQuantile_currOutput,
                                                           mean_flux=meanF_all_quantiles[quantile_key], 
                                                           precision=precision)
-                FPS_currQuantile[fft_binids_x[1:]] += FPS_currQuantile_x[1:]
+                _ = np.add.at(FPS_currQuantile, fft_binids_x[1:], FPS_currQuantile_x[1:])
                 FPS_currQuantile /= fft_nbins_kedges_x
                 FPS_nOutputs_quantiles[quantile_key][f'FPSx_nOutput_{nOutput:.0f}'] += FPS_currQuantile_x
 
@@ -1129,7 +1129,7 @@ def main():
                 _, FPS_currQuantile_y = FPSHead_y.get_FPS(tau_local_y_currQuantile_currOutput,
                                                           mean_flux=meanF_all_quantiles[quantile_key],
                                                           precision=precision)
-                FPS_currQuantile[fft_binids_y[1:]] += FPS_currQuantile_y[1:]
+                _ = np.add.at(FPS_currQuantile, fft_binids_y[1:], FPS_currQuantile_y[1:])
                 FPS_currQuantile /= fft_nbins_kedges_y
                 FPS_nOutputs_quantiles[quantile_key][f'FPSy_nOutput_{nOutput:.0f}'] += FPS_currQuantile_y
 
@@ -1137,7 +1137,7 @@ def main():
                 _, FPS_currQuantile_z = FPSHead_z.get_FPS(tau_local_z_currQuantile_currOutput,
                                                           mean_flux=meanF_all_quantiles[quantile_key],
                                                           precision=precision)
-                FPS_currQuantile[fft_binids_z[1:]] += FPS_currQuantile_z[1:]
+                _ = np.add.at(FPS_currQuantile, fft_binids_z[1:], FPS_currQuantile_z[1:])
                 FPS_currQuantile /= fft_nbins_kedges_z
                 FPS_nOutputs_quantiles[quantile_key][f'FPSz_nOutput_{nOutput:.0f}'] += FPS_currQuantile_z
 
