@@ -1009,8 +1009,6 @@ def main():
     skewer_fPath = Path(args.skewfname).resolve()
     assert skewer_fPath.is_file()
 
-    # Grab the integer skewer output
-    nSkewerOutput = int(skewer_fPath.stem.split('_')[0])
 
     # create ChollaOTFSkewers object
     OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
