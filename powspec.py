@@ -703,12 +703,16 @@ def main():
     # get data to save as future attrs
     # get skewer specific information
 
-    req_keys = ['taucalc_local', 'taucalc_eff']
+    #req_keys = ['taucalc_local', 'taucalc_eff']
+    tau_local_key = "taucalc_local_allLOS"
+    tau_eff_key = "taucalc_eff_allLOS"
+    req_keys = [tau_local_key, tau_eff_key]
     precision = np.float64
     Omega_K, Omega_L, Omega_M, Omega_R, Omega_b = 0., 0., 0., 0., 0.
     H0, w0, wa = 0., 0., 0.
     Lbox = np.zeros(3, dtype=precision)
-    nCells = np.zeros(3, dtype=precision)
+    nCells = np.zeros(3, dtype=np.uint64)
+    nFFTs = np.zeros(3, dtype=np.uint64)
     scale_factors = np.zeros(nOutputs, dtype=precision)
     redshifts = np.zeros(nOutputs, dtype=precision)
     nstrides = np.zeros(3, dtype=precision)
@@ -744,9 +748,12 @@ def main():
             Lbox[0] = OTFSkewers.dx * OTFSkewers.nx
             Lbox[1] = OTFSkewers.dy * OTFSkewers.ny
             Lbox[2] = OTFSkewers.dz * OTFSkewers.nz
-            nCells[0] = OTFSkewers.nx
-            nCells[1] = OTFSkewers.ny
-            nCells[2] = OTFSkewers.nz
+            nCells[0] = int(OTFSkewers.nx)
+            nCells[1] = int(OTFSkewers.ny)
+            nCells[2] = int(OTFSkewers.nz)
+            nFFTs[0] = int(1. + nCells[0] / 2.)
+            nFFTs[1] = int(1. + nCells[1] / 2)
+            nFFTs[2] = int(1. + nCells[2] / 2.)
             nstrides[0] = OTFSkewers.nstride_x
             nstrides[1] = OTFSkewers.nstride_y
             nstrides[2] = OTFSkewers.nstride_z
@@ -773,11 +780,11 @@ def main():
         OTFSkewers_x = OTFSkewers.get_skewersx_obj()
         OTFSkewers_y = OTFSkewers.get_skewersy_obj()
         OTFSkewers_z = OTFSkewers.get_skewersz_obj()
-        optdeptheff_x[n * nskewers_x: (n+1)*nskewers_x] = OTFSkewers_x.get_skeweralldata('taucalc_eff', 
+        optdeptheff_x[n * nskewers_x: (n+1)*nskewers_x] = OTFSkewers_x.get_skeweralldata(tau_eff_key, 
                                                                                          dtype=precision)
-        optdeptheff_y[n * nskewers_y: (n+1)*nskewers_y] = OTFSkewers_y.get_skeweralldata('taucalc_eff', 
+        optdeptheff_y[n * nskewers_y: (n+1)*nskewers_y] = OTFSkewers_y.get_skeweralldata(tau_eff_key, 
                                                                                          dtype=precision)
-        optdeptheff_z[n * nskewers_z: (n+1)*nskewers_z] = OTFSkewers_z.get_skeweralldata('taucalc_eff', 
+        optdeptheff_z[n * nskewers_z: (n+1)*nskewers_z] = OTFSkewers_z.get_skeweralldata(tau_eff_key, 
                                                                                          dtype=precision)
 
     # group all effective optical depths
@@ -789,6 +796,7 @@ def main():
     # create a mask of all effective optical depths within our range
     optdeptheff_all_inbounds_mask = (optdeptheff_all > args.optdepthlow) & (optdeptheff_all < args.optdepthupp)
     nskewers_inbounds = np.sum(optdeptheff_all_inbounds_mask)
+    assert nskewers_inbounds > 0
 
     # calculate the number of skewers that is going to fall within each quantile
     nskewers_perquantile = nskewers_inbounds / args.nquantiles
@@ -798,7 +806,7 @@ def main():
     # index of (nOutputs * (nskewers_x + nskewers_y), nOutputs *(nskewers_x + nskewers_y + nskewers_z)) corresponds to z-axis
     indices_all_optdepthsort = np.argsort(optdeptheff_all)
     indices_all_inbounds_mask_optdepthsort = optdeptheff_all_inbounds_mask[indices_all_optdepthsort]
-  
+ 
     # array of indices that fall within quantile
     indices_all_optdepthsort_inbounds = indices_all_optdepthsort[indices_all_inbounds_mask_optdepthsort]
 
@@ -890,9 +898,9 @@ def main():
             OTFSkewers_y = OTFSkewers.get_skewersy_obj()
             OTFSkewers_z = OTFSkewers.get_skewersz_obj()
 
-            tau_local_x = OTFSkewers_x.get_skeweralldata('taucalc_local', dtype=precision)
-            tau_local_y = OTFSkewers_y.get_skeweralldata('taucalc_local', dtype=precision)
-            tau_local_z = OTFSkewers_z.get_skeweralldata('taucalc_local', dtype=precision)
+            tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
+            tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
+            tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
 
             # grab current output local optical depth in quantile
             tau_local_x_currQuantile_currOutput = tau_local_x[skewid_currQuantile_currOutput_x, :]
@@ -969,19 +977,22 @@ def main():
     dvHubble_min = np.min([dvHubblex_min, dvHubbley_min, dvHubblez_min])
     dvHubble_max = np.max([dvHubblex_max, dvHubbley_max, dvHubblez_max])
 
-    u_max = dvHubble_max * np.max(nCells)
-    l_kmin = np.log10( (2. * np.pi) / u_max)
-    l_kmax = np.log10( (2. * np.pi) / dvHubble_min)
+    # find min and max Hubble flow across entire box
+    u_max_max = dvHubble_max * np.max(nCells)
+    u_max_min = dvHubble_min * np.min(nCells)
+
+    l_kmin = np.log10( (2. * np.pi) / u_max_max) + np.log10(0.99)
+    l_kmax = np.log10( (2. * np.pi) * (np.max(nFFTs) - 1.) / u_max_min)
 
     if args.verbose:
         print("dvHubble min:", dvHubble_min)
         print("dvHubble max:", dvHubble_max)
         print("l_kmin: ", l_kmin)
         print("l_kmax: ", l_kmax)
-        print("u_max: ", u_max)
+        print("u_max: ", u_max_max)
 
     # create k value edges for inclusive power spectrum
-    n_bins = int((l_kmax - l_kmin) / args.dlogk)
+    n_bins = int(1 + ((l_kmax - l_kmin) / args.dlogk))
     iter_arr = np.arange(n_bins + 1)
     kedges = np.zeros(n_bins+1, dtype=precision)
     kedges[:] = 10**(l_kmin + (args.dlogk * iter_arr))  
@@ -1052,9 +1063,9 @@ def main():
         OTFSkewers_y = OTFSkewers.get_skewersy_obj()
         OTFSkewers_z = OTFSkewers.get_skewersz_obj()
         
-        tau_local_x = OTFSkewers_x.get_skeweralldata('taucalc_local', dtype=precision)
-        tau_local_y = OTFSkewers_y.get_skeweralldata('taucalc_local', dtype=precision)
-        tau_local_z = OTFSkewers_z.get_skeweralldata('taucalc_local', dtype=precision)      
+        tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
+        tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
+        tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)      
 
         if args.verbose:
             curr_str = f'--- Distribution of skewers in nOutput {nOutput} / scale factor: '
