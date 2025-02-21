@@ -132,7 +132,7 @@ def main():
             tau_eff_min = FPS_currQuantile.attrs.get('tau_min')
             tau_eff_max = FPS_currQuantile.attrs.get('tau_max')
             tau_eff_mean = FPS_currQuantile.attrs.get('tau_mean')
-            l_optdepth_mean[nQuantile] = tau_eff_mean
+            l_optdepth_mean[nQuantile] = np.log10(tau_eff_mean)
 
             # grab FPS values
             if args.dlogk:
@@ -179,9 +179,9 @@ def main():
                 _ = ax.grid(which='both', axis='both', alpha=0.3)
 
                 # add optical depth info
-                optdepth_str = rf"${optdepth_min:.4f} <$"
+                optdepth_str = rf"${tau_eff_min:.4f} <$"
                 optdepth_str += r"$\tau_{ \rm{eff} }$"
-                optdepth_str += rf"$< {optdepth_max:.4f}$"
+                optdepth_str += rf"$< {tau_eff_max:.4f}$"
                 x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
                 y_redshift = ylow * 3.
                 _ = ax.annotate(optdepth_str, xy=(x_redshift, y_redshift), fontsize=20)
@@ -193,7 +193,7 @@ def main():
                 _ = ax.annotate(optdepth_str, xy=(x_redshift, y_redshift), fontsize=20)
 
                 # save figure
-                fName = f"{quantile_groupkey}.png"
+                fName = f"{nOutput:.0f}_{currQuantile_key}.png"
                 img_fPath = Path(fName)
                 img_fPath = outdir_dirPath / img_fPath
                 if args.verbose:
