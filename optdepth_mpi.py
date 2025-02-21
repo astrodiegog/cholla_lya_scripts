@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from mpi4py import MPI
 
 from time import time
 
@@ -592,12 +593,13 @@ class ChollaOnTheFlySkewer:
 
         return data_key in self.allkeys
 
-    def get_skewerdata(self, key, dtype=np.float32):
+    def get_skewerdata(self, key, comm, dtype=np.float32):
         '''
         Return a specific skewer dataset
 
         Args:
             key (str): key to access data from hdf5 file
+            comm (mpi4py.MPI.Comm): communication context
             dtype (np type): (optional) numpy precision to use
         Returns:
             arr (arr): requested dataset
@@ -606,7 +608,7 @@ class ChollaOnTheFlySkewer:
         assert self.check_datakey(key)
 
         arr = np.zeros(self.OTFSkewerHead.n_i, dtype=dtype)
-        with h5py.File(self.fPath, 'r') as fObj:
+        with h5py.File(self.fPath, 'r', driver='mpio', comm=comm) as fObj:
             arr[:] = fObj[self.OTFSkewerHead.skew_key].get(key)[self.OTFSkewerHead.skew_id, :]
 
         return arr
@@ -715,14 +717,17 @@ class ChollaOnTheFlySkewers:
             create specific skewer objects
 
         Initialized with:
-        - fPath (PosixPath): file path to skewers output        
+        - fPath (PosixPath): file path to skewers output    
+        - comm (mpi4py.MPI.Comm): communication context    
 
     Values are returned in code units unless otherwise specified.
     '''
 
-    def __init__(self, fPath):
+    def __init__(self, fPath, comm):
         self.OTFSkewersfPath = fPath.resolve() # convert to absolute path
         assert self.OTFSkewersfPath.is_file() # make sure file exists
+
+        self.comm = comm
 
         self.xskew_str = "skewers_x"
         self.yskew_str = "skewers_y"
@@ -757,12 +762,12 @@ class ChollaOnTheFlySkewers:
             data sets
         
         Args:
-            - datalength_str (str): (optional) key to dataset used to find the
+            datalength_str (str): (optional) key to dataset used to find the
                 number of skewers and cells along an axis
         Returns:
             ...
         '''
-        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+        with h5py.File(self.OTFSkewersfPath, 'r', driver='mpio', comm=self.comm) as fObj:
             # grab length of box in units of [kpc]
             Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
 
@@ -790,12 +795,12 @@ class ChollaOnTheFlySkewers:
         Set cosmological attributes for this object
 
         Args:
-            ...
+            comm (mpi4py.MPI.Comm): communication context
         Returns:
             ...
         '''
 
-        with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
+        with h5py.File(self.OTFSkewersfPath, 'r', driver='mpio', comm=self.comm) as fObj:
             self.Omega_R = fObj.attrs['Omega_R'].item()
             self.Omega_M = fObj.attrs['Omega_M'].item()
             self.Omega_L = fObj.attrs['Omega_L'].item()
@@ -887,11 +892,12 @@ class ChollaOnTheFlySkewers:
 # Study specific functions
 ###
 
-def print_info(OTFSkewers):
+def print_info(OTFSkewers, comm):
     '''
     Print out relevant information for this study that was calculated
 
     Args:
+        comm (mpi4py.MPI.Comm): communication context
         OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
     Returns:
         ...
@@ -911,7 +917,7 @@ def print_info(OTFSkewers):
     opticaldepth_time_xsig_keys = ['taucalc_time_3sig', 'taucalc_time_5sig', 'taucalc_time_8sig',
                                    'taucalc_time_10sig', 'taucalc_time_12sig']
 
-    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r') as fObj:
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r', driver='mpio', comm=comm) as fObj:
         for OTFSkewers_i in OTFSkewers_lst:
             print('Looking at ', OTFSkewers_i.OTFSkewersiHead.skew_key)
 
@@ -970,7 +976,7 @@ def print_info(OTFSkewers):
 
 
 
-def init_taucalc(OTFSkewers, restart = False, verbose=False):
+def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
     '''
     Initialize the calculation of the effective optical depth. For each skewers_i axis
         group, create three things:
@@ -983,6 +989,7 @@ def init_taucalc(OTFSkewers, restart = False, verbose=False):
 
     Args:
         OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
+        comm (mpi4py.MPI.Comm): communication context
         restart (bool): (optional) whether to reset progress and set all 
                         taucalc_bool to False
         verbose (bool): (optional) whether to print important information
@@ -990,7 +997,7 @@ def init_taucalc(OTFSkewers, restart = False, verbose=False):
         ...
     '''
 
-    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+') as fObj:
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
         if verbose:
             print(f'\t...initializing optical depth calculations for file {OTFSkewers.OTFSkewersfPath}')
 
@@ -1005,7 +1012,7 @@ def init_taucalc(OTFSkewers, restart = False, verbose=False):
             skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
 
             taucalc_bool = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=bool)
-            taucalc_eff = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64
+            taucalc_eff = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
 
             taucalc_local = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
                                           dtype=np.float64)
@@ -1033,13 +1040,14 @@ def init_taucalc(OTFSkewers, restart = False, verbose=False):
     return
 
 
-def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
+def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=False):
     '''
     Calculate the effective optical depth for each skewer along an axis
 
     Args:
         OTFSkewers_i (ChollaOnTheFlySkewers_i): holds all skewer info along an axis
         skewCosmoCalc (ChollaSkewerCosmoCalculator): holds optical depth function
+        comm (mpi4py.MPI.Comm): communication context
         precision (np type): (optional) numpy precision to use
         verbose (bool): (optional) whether to print important information
     Returns:
@@ -1048,7 +1056,7 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
 
     skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
 
-    with h5py.File(OTFSkewers_i.fPath, 'r+') as fObj:
+    with h5py.File(OTFSkewers_i.fPath, 'r+', driver='mpio', comm=comm) as fObj:
         curr_progress = fObj[skew_key].attrs['taucalc_prog']
         progress_tenperc = int(curr_progress // 0.1)
         if verbose:
@@ -1091,19 +1099,31 @@ def main():
     Append the array of median optical depths for a skewer file
     '''
 
-    # Create parser
-    parser = create_parser()
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
 
-    # Save args
-    args = parser.parse_args()
+    rank_idstr = f"Rank {rank:.0f}"
 
-    if args.verbose:
-        print("we're verbose in this mf !")
-        print(f"--- We are looking at skewer file : {args.skewfname} ---")
-        if args.restart:
-            print(f"--- We are reseting calculation from beginning ---")
-        else:
-            print(f"--- We are continuing calculation if already started ---")
+    if rank == 0:
+        # Create parser 
+        parser = create_parser()
+        # Save args
+        args = parser.parse_args()
+        if args.verbose:
+            print(f"--- {rank_idstr} : Args parsed and created ! ---")
+    else:
+        args = None
+
+
+    # Give args to all ranks
+    args = comm.bcast(args, root=0)
+
+    if args.verbose and rank == 0:
+        print(f"--- {rank_idstr} : Args have been broadcasted! ---")
+
+
+
 
     precision = np.float64
 
@@ -1111,36 +1131,37 @@ def main():
     skewer_fPath = Path(args.skewfname).resolve()
     assert skewer_fPath.is_file()
 
-    # Grab the integer skewer output
-    nSkewerOutput = int(skewer_fPath.stem.split('_')[0])
 
-    # create ChollaOTFSkewers object
-    OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
+        # Grab the integer skewer output
+        nSkewerOutput = int(skewer_fPath.stem.split('_')[0])
 
-    # add progress attribute, boolean mask for whether tau is calculated, and tau itself
-    init_taucalc(OTFSkewers, args.restart, args.verbose)
+        # create ChollaOTFSkewers object
+        OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath, comm)
 
-    # create cosmology and snapshot header
-    chCosmoHead = ChollaCosmologyHead(OTFSkewers.Omega_M, OTFSkewers.Omega_R, 
-                                      OTFSkewers.Omega_K, OTFSkewers.Omega_L,
-                                      OTFSkewers.w0, OTFSkewers.wa, OTFSkewers.H0)
-    snapHead = ChollaSnapHead(nSkewerOutput + 1, OTFSkewers.current_a) # snapshots are index-1
+        # add progress attribute, boolean mask for whether tau is calculated, and tau itself
+        init_taucalc(OTFSkewers, args.restart, args.verbose)
+
+        # create cosmology and snapshot header
+        chCosmoHead = ChollaCosmologyHead(OTFSkewers.Omega_M, OTFSkewers.Omega_R, 
+                                        OTFSkewers.Omega_K, OTFSkewers.Omega_L,
+                                        OTFSkewers.w0, OTFSkewers.wa, OTFSkewers.H0)
+        snapHead = ChollaSnapHead(nSkewerOutput + 1, OTFSkewers.current_a) # snapshots are index-1
         
 
     OTFSkewers_x = OTFSkewers.get_skewersx_obj()
     OTFSkewers_y = OTFSkewers.get_skewersy_obj()
     OTFSkewers_z = OTFSkewers.get_skewersz_obj()
 
-    skewCosmoCalc_x = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.nx, dx, precision)
-    skewCosmoCalc_y = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.ny, dy, precision)
-    skewCosmoCalc_z = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.dz, dz, precision)
+    skewCosmoCalc_x = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.nx, OTFSkewers.dx, precision)
+    skewCosmoCalc_y = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.ny, OTFSkewers.dy, precision)
+    skewCosmoCalc_z = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.dz, OTFSkewers.dz, precision)
 
-    taucalc(OTFSkewers_x, skewCosmoCalc_x, precision, args.verbose)
-    taucalc(OTFSkewers_y, skewCosmoCalc_y, precision, args.verbose)
-    taucalc(OTFSkewers_z, skewCosmoCalc_z, precision, args.verbose)
+    #taucalc(OTFSkewers_x, skewCosmoCalc_x, precision, args.verbose)
+    #taucalc(OTFSkewers_y, skewCosmoCalc_y, precision, args.verbose)
+    #taucalc(OTFSkewers_z, skewCosmoCalc_z, precision, args.verbose)
 
 
-    print_info(OTFSkewers)
+    #print_info(OTFSkewers)
 
         
 
