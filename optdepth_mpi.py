@@ -46,25 +46,11 @@ def create_parser():
 ###
 # Calculations+bookkeeping related to cosmology, snapshot, and how optical depth is calculated
 ###
-# ChollaSnapHead                --> will hold scale factor
 # ChollaCosmologyHead           --> cosmology-specific info
 # ChollaSnapCosmologyHead       --> combines ChollaSnap+ChollaCosmo
 # ChollaCosmoCalculator         --> calculator for cosmology snapshot (unit conversions)
 # ChollaHydroCalculator         --> cgs constants & doppler param method (indpt of scale factor) 
 # ChollaSkewerCosmoCalculator   --> implements optical depth calculation along skewer length
-
-class ChollaSnapHead:
-    '''
-    Cholla Snapshot Head object
-        Holds snapshot specific information
-        Initialized with:
-        - nSnap (int): number of the snapshot within run
-        - scale_factor (float): scale factor at current snapshot
-    '''
-
-    def __init__(self, nSnap, scale_factor):
-        self.nSnap = nSnap
-        self.a = scale_factor
 
 
 class ChollaCosmologyHead:
@@ -377,6 +363,7 @@ class ChollaHydroCalculator:
         return arr
 
 
+
 class ChollaSkewerCosmoCalculator:
     '''
     Cholla Skewer Calculator object
@@ -384,26 +371,27 @@ class ChollaSkewerCosmoCalculator:
             for a skewer.
 
         Initialized with:
-            snapHead (ChollaSnapHead): provides current redshift
+            scale_factor (float): scale factor
             cosmoHead (ChollaCosmologyHead): provides helpful information of cosmology & units
             n_los (int): number of cells along line-of-sight
             dx (float): comoving distance between cells (kpc)
             dtype (np type): (optional) numpy precision to initialize output arrays
-
+        
         Objects including ghost cells are suffixed with _ghost
 
     Values are returned in code units unless otherwise specified.
     '''
-    def __init__(self, snapHead, cosmoHead, n_los, dx, dtype=np.float32):
+    def __init__(self, scale_factor, cosmoHead, n_los, dx, dtype=np.float32):
         self.n_los = n_los
         self.n_ghost = int(0.1 * n_los) # take 10% from bruno
         self.dx = dx
+        self.a = scale_factor
 
         # number of line-of-sight cells including ghost cells
         self.n_los_ghost = self.n_los + 2 * self.n_ghost
 
         # create ChollaCosmoCalc object
-        self.snapCosmoHead = ChollaSnapCosmologyHead(snapHead, cosmoHead)
+        self.snapCosmoHead = ChollaSnapCosmologyHead(self.a, cosmoHead)
         calc_dims, calc_dims_ghost = (self.n_los,), (self.n_los_ghost,)
         self.snapCosmoCalc = ChollaCosmoCalculator(self.snapCosmoHead, calc_dims, dtype=dtype)
         self.snapCosmoCalc_ghost = ChollaCosmoCalculator(self.snapCosmoHead, calc_dims_ghost, dtype=dtype)
@@ -445,6 +433,7 @@ class ChollaSkewerCosmoCalculator:
         arr_ghost[-self.n_ghost : ] = arr[ : self.n_ghost]
 
         return arr_ghost
+
 
     def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp, num_sigs=0):
         '''
@@ -490,6 +479,7 @@ class ChollaSkewerCosmoCalculator:
         # initialize optical depths
         tau_ghost = self.snapCosmoCalc_ghost.create_arr()
 
+
         if num_sigs == 0:
             # OLD IMPLEMENTATION
             for losid in range(self.n_los_ghost):
@@ -500,7 +490,7 @@ class ChollaSkewerCosmoCalculator:
                 # [cm3 * # density] = [cm3 * cm-3] = []
                 tau_ghost[losid] = sigma_Lya * np.sum(nHI_phys_ghost_cgs * (erf(y_R) - erf(y_L))) / 2.0
         else:
-            # NEW IMPLEMENTATION -- dynamic scaling of x-sigs
+            # NEW IMPLEMENTATION -- dynamic scaling of 5 sigs
             five_sigs = (num_sigs) * (doppler_param_ghost_cgs)
 
             vHC_fivesig_upp_all = self.vHubbleC_ghost_cgs + five_sigs
@@ -1152,9 +1142,9 @@ def main():
     OTFSkewers_y = OTFSkewers.get_skewersy_obj()
     OTFSkewers_z = OTFSkewers.get_skewersz_obj()
 
-    skewCosmoCalc_x = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.nx, OTFSkewers.dx, precision)
-    skewCosmoCalc_y = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.ny, OTFSkewers.dy, precision)
-    skewCosmoCalc_z = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, OTFSkewers.dz, OTFSkewers.dz, precision)
+    skewCosmoCalc_x = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.nx, OTFSkewers.dx, precision)
+    skewCosmoCalc_y = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.ny, OTFSkewers.dy, precision)
+    skewCosmoCalc_z = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.dz, OTFSkewers.dz, precision)
 
     #taucalc(OTFSkewers_x, skewCosmoCalc_x, precision, args.verbose)
     #taucalc(OTFSkewers_y, skewCosmoCalc_y, precision, args.verbose)
