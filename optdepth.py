@@ -1005,90 +1005,22 @@ def init_taucalc(OTFSkewers, restart = False, verbose=False):
             skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
 
             taucalc_bool = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=bool)
-            taucalc_eff_allLOS = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-            taucalc_time_allLOS = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_eff = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
 
-            taucalc_eff_3sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-            taucalc_time_3sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-
-            taucalc_eff_5sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-            taucalc_time_5sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-
-            taucalc_eff_8sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-            taucalc_time_8sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-
-            taucalc_eff_10sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-            taucalc_time_10sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-
-            taucalc_eff_12sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-            taucalc_time_12sig = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
-
-            taucalc_local_allLOS = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+            taucalc_local = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
                                           dtype=np.float64)
-            taucalc_local_3sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
-                                          dtype=np.float64)
-            taucalc_local_5sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
-                                          dtype=np.float64)
-            taucalc_local_8sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
-                                          dtype=np.float64)
-            taucalc_local_10sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
-                                           dtype=np.float64)
-            taucalc_local_12sig = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
-                                           dtype=np.float64)
             
-
-            if (restart) or ('taucalc_prog' not in dict(fObj[skew_key].attrs).keys()):
-                fObj[skew_key].attrs['taucalc_prog'] = 0.
 
             if 'taucalc_bool' not in fObj[skew_key].keys():
                 fObj[skew_key].create_dataset('taucalc_bool', data=taucalc_bool)
             elif restart:
                 fObj[skew_key]['taucalc_bool'][:] = False
             
-            if 'taucalc_eff_allLOS' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff_allLOS', data=taucalc_eff_allLOS)
-            if 'taucalc_time_allLOS' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_time_allLOS', data=taucalc_time_allLOS)
+            if 'taucalc_eff' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_eff', data=taucalc_eff)
 
-            if 'taucalc_eff_3sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff_3sig', data=taucalc_eff_3sig)
-            if 'taucalc_time_3sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_time_3sig', data=taucalc_time_3sig)
-
-            if 'taucalc_eff_5sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff_5sig', data=taucalc_eff_5sig)
-            if 'taucalc_time_5sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_time_5sig', data=taucalc_time_5sig)
-
-            if 'taucalc_eff_8sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff_8sig', data=taucalc_eff_8sig)
-            if 'taucalc_time_8sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_time_8sig', data=taucalc_time_8sig)
-
-            if 'taucalc_eff_10sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff_10sig', data=taucalc_eff_10sig)
-            if 'taucalc_time_10sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_time_10sig', data=taucalc_time_10sig)
-
-            if 'taucalc_eff_12sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff_12sig', data=taucalc_eff_12sig)
-            if 'taucalc_time_12sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_time_12sig', data=taucalc_time_12sig)
-
-            if 'taucalc_local_allLOS' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_local_allLOS', data=taucalc_local_allLOS)
-            if 'taucalc_local_3sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_local_3sig', data=taucalc_local_3sig)
-            if 'taucalc_local_5sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_local_5sig', data=taucalc_local_5sig)
-            if 'taucalc_local_8sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_local_8sig', data=taucalc_local_8sig)
-            if 'taucalc_local_10sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_local_10sig', data=taucalc_local_10sig)
-            if 'taucalc_local_12sig' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_local_12sig', data=taucalc_local_12sig)
-
-
+            if 'taucalc_local' not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset('taucalc_local', data=taucalc_local)
 
     if verbose:
         print("...initialization complete !")
@@ -1112,8 +1044,8 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
     skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
 
     with h5py.File(OTFSkewers_i.fPath, 'r+') as fObj:
-        curr_progress = fObj[skew_key].attrs['taucalc_prog']
-        progress_tenperc = int(curr_progress // 0.1)
+        taucalc_bool = fObj[skew_key]['taucalc_bool']
+        curr_progress = np.sum(taucalc_bool) / taucalc_bool.size
         if verbose:
             print(f"Starting calculations at {100 * curr_progress:.2f} % complete")
 
@@ -1129,62 +1061,14 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
             densityHI = OTFSkewer.get_HIdensity(precision)
             temp = OTFSkewer.get_temperature(precision)
 
-            time_allLOS_start = time()
             taus_allLOS = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=0)
-            time_allLOS_end = time()
-
-            time_3sig_start = time()
-            taus_3sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=3)
-            time_3sig_end = time()
-            
-            time_5sig_start = time()
-            taus_5sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=5)
-            time_5sig_end = time()
-
-            time_8sig_start = time()
-            taus_8sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=8)
-            time_8sig_end = time()
-
-            time_10sig_start = time()
-            taus_10sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=10)
-            time_10sig_end = time()
-        
-            time_12sig_start = time()
-            taus_12sig = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=12)
-            time_12sig_end = time()
 
 
             # update attr, bool arr, and tau arrs
-            fObj[skew_key].attrs['taucalc_prog'] += (1. / OTFSkewers_i.OTFSkewersiHead.n_skews)
             fObj[skew_key]['taucalc_bool'][nSkewerID] = True
             
-            fObj[skew_key]['taucalc_eff_allLOS'][nSkewerID] = np.median(taus_allLOS)
-            fObj[skew_key]['taucalc_time_allLOS'][nSkewerID] = time_allLOS_end - time_allLOS_start
-            fObj[skew_key]['taucalc_local_allLOS'][nSkewerID] = taus_allLOS
-
-            fObj[skew_key]['taucalc_eff_3sig'][nSkewerID] = np.median(taus_3sig)
-            fObj[skew_key]['taucalc_time_3sig'][nSkewerID] = time_3sig_end - time_3sig_start
-            fObj[skew_key]['taucalc_local_3sig'][nSkewerID] = taus_3sig
-
-            fObj[skew_key]['taucalc_eff_5sig'][nSkewerID] = np.median(taus_5sig)
-            fObj[skew_key]['taucalc_time_5sig'][nSkewerID] = time_5sig_end - time_5sig_start
-            fObj[skew_key]['taucalc_local_5sig'][nSkewerID] = taus_5sig
-
-            fObj[skew_key]['taucalc_eff_8sig'][nSkewerID] = np.median(taus_8sig)
-            fObj[skew_key]['taucalc_time_8sig'][nSkewerID] = time_8sig_end - time_8sig_start
-            fObj[skew_key]['taucalc_local_8sig'][nSkewerID] = taus_8sig
-
-            fObj[skew_key]['taucalc_eff_10sig'][nSkewerID] = np.median(taus_10sig)
-            fObj[skew_key]['taucalc_time_10sig'][nSkewerID] = time_10sig_end - time_10sig_start
-            fObj[skew_key]['taucalc_local_10sig'][nSkewerID] = taus_10sig
-
-            fObj[skew_key]['taucalc_eff_12sig'][nSkewerID] = np.median(taus_12sig)
-            fObj[skew_key]['taucalc_time_12sig'][nSkewerID] = time_12sig_end - time_12sig_start
-            fObj[skew_key]['taucalc_local_12sig'][nSkewerID] = taus_12sig
-
-            if ((verbose) and ( (fObj[skew_key].attrs['taucalc_prog'] // 0.1) > progress_tenperc) ):
-                print(f"--- Completed {fObj[skew_key].attrs['taucalc_prog'] * 100 : .0f} % at skewer {nSkewerID:.0f} ---")
-                progress_tenperc += 1
+            fObj[skew_key]['taucalc_eff'][nSkewerID] = np.median(taus_allLOS)
+            fObj[skew_key]['taucalc_local'][nSkewerID] = taus_allLOS
 
     if verbose:
         print("Effective optical depth calculation completed along ", OTFSkewers_i.OTFSkewersiHead.skew_key)
@@ -1254,7 +1138,7 @@ def main():
         skewCosmoCalc = ChollaSkewerCosmoCalculator(snapHead, chCosmoHead, nlos, dx, precision)
         taucalc(OTFSkewers_i, skewCosmoCalc, precision, args.verbose)
 
-    print_info(OTFSkewers)
+    #print_info(OTFSkewers)
 
         
 
