@@ -886,87 +886,6 @@ class ChollaOnTheFlySkewers:
 # Study specific functions
 ###
 
-def print_info(OTFSkewers, comm):
-    '''
-    Print out relevant information for this study that was calculated
-
-    Args:
-        comm (mpi4py.MPI.Comm): communication context
-        OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
-    Returns:
-        ...
-    '''
-
-    print(f'Info regarding the skewers measured at redshift = {OTFSkewers.current_z:.4f}')
-    print('We are showing the Mean +/- Standard deviation for statistics measured comparing')
-    print('\t line of sight calculation methods')
-
-    OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(), OTFSkewers.get_skewersy_obj(),
-                      OTFSkewers.get_skewersz_obj()]
-
-    opticaldepth_local_xsig_keys = ['taucalc_local_3sig', 'taucalc_local_5sig', 'taucalc_local_8sig',
-                                    'taucalc_local_10sig', 'taucalc_local_12sig']
-    opticaldepth_eff_xsig_keys = ['taucalc_eff_3sig', 'taucalc_eff_5sig', 'taucalc_eff_8sig',
-                                  'taucalc_eff_10sig', 'taucalc_eff_12sig']
-    opticaldepth_time_xsig_keys = ['taucalc_time_3sig', 'taucalc_time_5sig', 'taucalc_time_8sig',
-                                   'taucalc_time_10sig', 'taucalc_time_12sig']
-
-    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r', driver='mpio', comm=comm) as fObj:
-        for OTFSkewers_i in OTFSkewers_lst:
-            print('Looking at ', OTFSkewers_i.OTFSkewersiHead.skew_key)
-
-            # grab data
-            tau_eff_entireLOS = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_eff_allLOS')[:]
-            tau_local_entireLOS = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_local_allLOS')[:]
-            tau_time_entireLOS = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('taucalc_time_allLOS')[:]
-            flux_local_entireLOS = np.exp(-tau_local_entireLOS.flatten())
-        
-            flux_mean, flux_std = np.mean(flux_local_entireLOS), np.std(flux_local_entireLOS)
-            time_tot, time_mean, time_std = np.sum(tau_time_entireLOS), np.mean(tau_time_entireLOS), np.std(tau_time_entireLOS)
-
-            print(f'With entire line of sight...')
-            print(f'\t Mean flux: {flux_mean:.4e} +/- {flux_std:.4e}')
-            print(f'\t Mean calculation time / skewer: {time_mean:.4e} +/- {time_std:.4e}')
-            print(f'\t Total Calculation time skewers: {time_tot:.4e}')
-
-            for k, optdepth_local_key in enumerate(opticaldepth_eff_xsig_keys):
-                if (k == 0):
-                    numsigma = 3
-                elif (k == 1):
-                    numsigma = 5
-                elif (k == 2):
-                    numsigma = 8
-                elif (k == 3):
-                    numsigma = 10
-                elif (k == 4):
-                    numsigma = 12
-
-                optdepth_eff_key = opticaldepth_eff_xsig_keys[k]
-                optdepth_time_key = opticaldepth_time_xsig_keys[k]
-
-                tau_eff_xsig = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get(optdepth_eff_key)[:]
-                tau_loc_xsig = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get(optdepth_local_key)[:]
-                tau_time_xsig = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get(optdepth_time_key)[:]
-                flux_local_xsig = np.exp(-tau_loc_xsig.flatten())
-
-                flux_mean, flux_std = np.mean(flux_local_xsig), np.std(flux_local_xsig)
-                time_tot, time_mean, time_std = np.sum(tau_time_xsig), np.mean(tau_time_xsig), np.std(tau_time_xsig)
-
-                abs_err = np.abs(tau_eff_entireLOS - tau_eff_xsig)
-                rel_err = np.abs((tau_eff_entireLOS - tau_eff_xsig) / tau_eff_entireLOS)
-
-                print(12*'---')
-                print(f'Using {numsigma:.0f} - b window...')
-                print(f'\t Mean flux: {flux_mean:.4e} +/- {flux_std:.4e}')
-                print(f'\t Calculation time / skewer: {time_mean:.4e} +/- {time_std:.4e}')
-                print(f'\t Total Calculation time: {time_tot:.4e}\n')
-                print(f'\t Comparing effective local optical depths we find...')
-                print(f'\t\t (absolute error) median: {np.median(abs_err):.4e} | mean +/- std: {np.mean(abs_err):.4e} +/- {np.std(abs_err):.4e}')
-                print(f'\t\t (relative error) median: {np.median(rel_err):.4e} | mean +/- std: {np.mean(rel_err):.4e} +/- {np.std(rel_err):.4e}')
-            print(12*'---', '\n')
-
-
-    return
 
 
 
@@ -992,12 +911,16 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
     '''
 
     rank = comm.Get_rank()
+    size = comm.Get_size()
     rank_idstr = f"Rank {rank:.0f}"
 
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
 
         if verbose:
             print(f'--- {rank_idstr} : \t...initializing optical depth calculations for file {OTFSkewers.OTFSkewersfPath} ---')
+
+        if f'calc_{size}_nprocs' not in fObj.keys():
+            fObj
 
         OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
                         OTFSkewers.get_skewersy_obj(),
@@ -1020,7 +943,7 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
                 fObj[skew_key].create_dataset('taucalc_bool', data=taucalc_bool)
             elif restart:
                 fObj[skew_key]['taucalc_bool'][:] = False
-            
+
             if 'taucalc_eff' not in fObj[skew_key].keys():
                 fObj[skew_key].create_dataset('taucalc_eff', data=taucalc_eff)
 
@@ -1169,8 +1092,6 @@ def main():
     taucalc(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose)
     taucalc(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose)
 
-
-    print_info(OTFSkewers)
 
     if args.verbose:
         print(f"--- {rank_idstr} : howdy2")
