@@ -323,7 +323,8 @@ class ChollaOnTheFlySkewers_i:
 
     def set_keys(self):
         '''
-        Check skewer group to set the available keys
+        Check skewer group to set the available keys. Keys in `skewer_i` groups
+            may lead to a 1D or 2D dataset
 
         Args:
             ...
@@ -383,20 +384,6 @@ class ChollaOnTheFlySkewers_i:
                 arr[:,:] = fObj[self.OTFSkewersiHead.skew_key].get(key)[:, :]
 
         return arr
-
-    def get_alllocalopticaldepth(self, dtype=np.float32):
-        '''
-        Return local optical depth array for all skewers
-
-        Args:
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            arr (arr): local optical depth
-        '''
-
-        return self.get_skeweralldata(self.local_opticaldepth_key, dtype=dtype)
-
-
 
 
 class ChollaOnTheFlySkewers:
