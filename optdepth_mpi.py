@@ -2,7 +2,6 @@ import argparse
 from pathlib import Path
 from mpi4py import MPI
 
-from time import time
 
 import numpy as np
 import h5py
@@ -518,128 +517,9 @@ class ChollaSkewerCosmoCalculator:
 
 
 # Skewer-specific information that interacts with skewers for a given skewer file
-# ChollaOnTheFlySkewerHead      --> Holds skewer id
-# ChollaOnTheFlySkewer          --> Grabs data from file
 # ChollaOnTheFlySkewers_iHead   --> Holds skewer group
 # ChollaOnTheFlySkewers_i       --> Creates ChollaOnTheFlySkewer object
 # ChollaOnTheFlySkewers         --> Creates ChollaOnTheFlySkewers_i object
-
-class ChollaOnTheFlySkewerHead:
-    '''
-    Cholla On The Fly Skewer Head
-
-    Holds information regarding a specific individual skewer
-
-        Initialized with:
-        - skew_id (int): id of the skewer
-        - n_i (int): length of the skewer
-        - skew_key (str): string to access skewer
-
-    '''
-    def __init__(self, skew_id, n_i, skew_key):
-        self.skew_id = skew_id
-        self.n_i = n_i
-        self.skew_key = skew_key
-
-
-class ChollaOnTheFlySkewer:
-    '''
-    Cholla On The Fly Skewer
-    
-    Holds skewer specific information to an output with methods to 
-            access data for that output
-
-        Initialized with:
-        - ChollaOTFSkewerHead (ChollaOnTheFlySkewerHead): header
-            information associated with skewer
-        - fPath (PosixPath): file path to skewers output
-        - comm (mpi4py.MPI.Comm): communication context 
-
-    Values are returned in code units unless otherwise specified.
-    '''
-
-    def __init__(self, ChollaOTFSkewerHead, fPath, comm):
-        self.OTFSkewerHead = ChollaOTFSkewerHead
-        self.fPath = fPath.resolve() # convert to absolute path
-        assert self.fPath.is_file() # make sure file exists
-        self.comm = comm
-
-        self.HI_str = 'HI_density'
-        self.HeII_str = 'HeII_density'
-        self.density_str = 'density'
-        self.vel_str = 'los_velocity'
-        self.temp_str = 'temperature'
-
-        self.allkeys = {self.HI_str, self.HeII_str, self.density_str,
-                        self.vel_str, self.temp_str}
-
-    def check_datakey(self, data_key):
-        '''
-        Check if a requested data key is valid to be accessed in skewers file
-
-        Args:
-            data_key (str): key string that will be used to access hdf5 dataset
-        Return:
-            (bool): whether data_key is a part of expected data keys
-        '''
-
-        return data_key in self.allkeys
-
-    def get_skewerdata(self, key, dtype=np.float32):
-        '''
-        Return a specific skewer dataset
-
-        Args:
-            key (str): key to access data from hdf5 file
-            comm (mpi4py.MPI.Comm): communication context
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            arr (arr): requested dataset
-        '''
-
-        assert self.check_datakey(key)
-
-        arr = np.zeros(self.OTFSkewerHead.n_i, dtype=dtype)
-        with h5py.File(self.fPath, 'r', driver='mpio', comm=self.comm) as fObj:
-            arr[:] = fObj[self.OTFSkewerHead.skew_key].get(key)[self.OTFSkewerHead.skew_id, :]
-
-        return arr
-
-    def get_HIdensity(self, dtype=np.float32):
-        '''
-        Return the HI density array
-
-        Args:
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            arr (arr): HI density
-        '''
-
-        return self.get_skewerdata(self.HI_str, dtype=dtype)
-
-    def get_losvelocity(self, dtype=np.float32):
-        '''
-        Return the line-of-sight velocity array
-
-        Args:
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            arr (arr): line-of-sight velocity
-        '''
-
-        return self.get_skewerdata(self.vel_str, dtype=dtype)
-
-    def get_temperature(self, dtype=np.float32):
-        '''
-        Return the temperature array
-
-        Args:
-            dtype (np type): (optional) numpy precision to use
-        Returns:
-            arr (arr): temperature
-        '''
-
-        return self.get_skewerdata(self.temp_str, dtype=dtype)
 
 
 class ChollaOnTheFlySkewers_iHead:
@@ -688,19 +568,6 @@ class ChollaOnTheFlySkewers_i:
         assert self.fPath.is_file() # make sure file exists
         self.comm = comm
 
-    def get_skewer_obj(self, skewid):
-        '''
-        Return ChollaOnTheFlySkewer object of this analysis
-
-        Args:
-            skew_id (int): skewer id
-        Return:
-            OTFSkewer (ChollaOnTheFlySkewer): skewer object
-        '''
-        OTFSkewerHead = ChollaOnTheFlySkewerHead(skewid, self.OTFSkewersiHead.n_i,
-                                                 self.OTFSkewersiHead.skew_key)
-
-        return ChollaOnTheFlySkewer(OTFSkewerHead, self.fPath, self.comm)
 
 
 class ChollaOnTheFlySkewers:
@@ -919,8 +786,12 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
         if verbose:
             print(f'--- {rank_idstr} : \t...initializing optical depth calculations for file {OTFSkewers.OTFSkewersfPath} ---')
 
-        if f'calc_{size}_nprocs' not in fObj.keys():
-            fObj
+
+        if f'calctime_{size:.0f}_nprocs' not in fObj.keys():
+            calctime_arr = np.zeros(size, dtype=np.float64)
+            fObj.create_dataset(f'calctime_{size:.0f}_nprocs', data=calctime_arr)
+        elif restart:
+            fObj[f'calctime_{size:.0f}_nprocs'][:] = 0.
 
         OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
                         OTFSkewers.get_skewersy_obj(),
@@ -981,7 +852,7 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=Fal
         taucalc_bool = fObj[skew_key]['taucalc_bool']
         curr_progress = np.sum(taucalc_bool) / taucalc_bool.size
         if verbose:
-            print(f"Starting calculations at {100 * curr_progress:.2f} % complete along ", OTFSkewers_i.OTFSkewersiHead.skew_key)
+            print(f"--- {rank_idstr} : Starting calculations at {100 * curr_progress:.2f} % complete along ", OTFSkewers_i.OTFSkewersiHead.skew_key, "---")
 
         skewerID_arr = np.arange(OTFSkewers_i.OTFSkewersiHead.n_skews)
         skewerIDs_rank = np.argwhere((skewerID_arr % size) == rank).flatten()
@@ -993,30 +864,25 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=Fal
                 continue
 
             # grab skewer data & calculate effective optical depth
-            OTFSkewer = OTFSkewers_i.get_skewer_obj(nSkewerID)
-            vel = OTFSkewer.get_losvelocity(precision)
-            densityHI = OTFSkewer.get_HIdensity(precision)
-            temp = OTFSkewer.get_temperature(precision)
-
-            #if verbose:
-             #  print(f"--- {rank_idstr} : OTF Skewer object {nSkewerID:.0f} created and data grabbed")
+            vel = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('los_velocity')[nSkewerID, :]
+            densityHI = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('HI_density')[nSkewerID, :]
+            temp = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('temperature')[nSkewerID, :]
 
             taus = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=0)
 
             # update bool arr, and tau arrs
             fObj[skew_key]['taucalc_bool'][nSkewerID] = True
-            
-            #fObj[skew_key]['taucalc_eff'][nSkewerID] = rank
-
             fObj[skew_key]['taucalc_eff'][nSkewerID] = np.median(taus)
             fObj[skew_key]['taucalc_local'][nSkewerID] = taus
 
 
 
     if verbose:
-        print("Effective optical depth calculation completed along ", OTFSkewers_i.OTFSkewersiHead.skew_key)
+        print(f"--- {rank_idstr} : Effective optical depth calculation completed along ", OTFSkewers_i.OTFSkewersiHead.skew_key)
 
     return
+
+
 
 def main():
     '''
@@ -1044,9 +910,8 @@ def main():
     args = comm.bcast(args, root=0)
 
     if args.verbose and rank == 0:
+        print(f"{rank_idstr} : Using {size:.0f} processes !")
         print(f"--- {rank_idstr} : Args have been broadcasted! ---")
-
-
 
 
     precision = np.float64
@@ -1086,15 +951,36 @@ def main():
     skewCosmoCalc_z = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.nz, OTFSkewers.dz, precision)
 
     if args.verbose:
-        print(f"--- {rank_idstr} : Skewer Cosmo Calculator objects created")
+        print(f"--- {rank_idstr} : Skewer Cosmo Calculator objects created ---")
+
+    t_start = MPI.Wtime()
 
     taucalc(OTFSkewers_x, skewCosmoCalc_x, comm, precision, args.verbose)
-    taucalc(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose)
-    taucalc(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose)
-
-
     if args.verbose:
-        print(f"--- {rank_idstr} : howdy2")
+        t_x = MPI.Wtime()
+        print(f"--- {rank_idstr} : Took {t_x - t_start:.4e} secs to calculate tau along x ---")
+
+
+    taucalc(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose)
+    if args.verbose:
+        t_y = MPI.Wtime()
+        print(f"--- {rank_idstr} : Took {t_y - t_x:.4e} secs to calculate tau along y ---")
+
+    taucalc(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose)
+    if args.verbose:
+        t_z = MPI.Wtime()
+        print(f"--- {rank_idstr} : Took {t_z - t_y:.4e} secs to calculate tau along z ---")
+
+    t_end = MPI.Wtime()
+
+
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
+        if args.verbose:
+            print(f"--- {rank_idstr} : Took {t_end - t_start:.4e} secs for entire calculation ---")
+
+        fObj[f'calctime_{size:.0f}_nprocs'][rank] = t_end - t_start
+
+
 
         
 
