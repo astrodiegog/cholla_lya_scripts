@@ -1,72 +1,62 @@
 # cholla_lya_scripts
 
-Python scripts to study the Lyman-alpha Forest in cosmological Cholla simulations
+We would like to study the Lyman-alphs Forest in cosmological Cholla asimulations by calculating the optical depth of Lyman-alpha along skewers.
 
-We would like to study the optical depth calculation and transmitted flux power spectrum for a cosmological Cholla simulation, using different optical depth criteria. Our end goal will be showing the difference between a calculated transmitted flux power spectrum against the one outputted from the analysis file. 
+However, our previous [study](https://github.com/astrodiegog/cholla_lya_scripts/tree/speedup-study) on speeding up the calculation (because it scales poorly with more cells), focused on changing the optical depth calculation itself - only including cells whose thermal velocity is near that of the cell. However, this led to different optical depth values for different windows to go around the thermal velocity, which in turn created changes in the transmitted flux power spectrum. Details on the analysis of this study can be found [here](https://cholla-cosmo.readthedocs.io/en/latest/study_gaussianspeedup.html#study-gauss-speed). 
 
-What exactly are we comparing? Well ... [include explanation from overleaf] 
+This new repository aims to leverage parallelization to use many processors to attack the problem instead of changing the calculation itself. When doing the calculation, we serially loop over each skewer, and calculate the local optical depth along the entire line-of-sight, instead of only near the thermal velocity of a cell. While reproducing the flux power spectrum for the on-the-fly analysis, this is very computationally intensive. To get around this, we note that the calculation of the optical depth is independent of other skewers -- many skewer optical depth calculations can be done in parallel.
 
-We will have a couple outputs:
+The Python package [mpi4py](https://mpi4py.readthedocs.io) provides Python bindings for the message passing interface (MPI) standard which is common in many parallelized codes, including Cholla itself. Instead of using Python, we could write this calculation in C itself, but one step at a time bro chilllllll. From serially looping over each skewer individually,
 
-1. ``scriptlogs/`` - directory holding information from optical depth calculation
-2. ``PowerSpectraPlotsDiff/`` - directory holding 2 plots and directories of individual plots, displaying the relative error of the transmitted flux power spectrum, with and without log-space
-
-We need 5 inputs:
-
-1. ``skewers/`` - directory holding skewer outputs
-2. ``analysis/`` - directory holding analysis outputs
-3. ``study/`` - directory holding outputs
-4. ``dlogk`` - differential step in log k-space
-5. ``OutputStr`` - string of outputs to study, delimited by commas
-
-
-How do we run the speed-up study? First we create all of the directories and slurm files required using `setup_study.py`
-
-```
-$ python3 setup_study.py $skewersDir $analysisDir $studyDir $dlogk $OutputStr -v
+```python
+for nSkewerID in range(nSkewers):
+    ...
+    tau_local[nSkewerID] = tau
 ```
 
-where
+we assign specific skewer IDs for each processor
 
-``-v`` flags the script to be verbose throughout the calculation
-``-n`` flags the name of the study to be something other than the last directory of ``$studyDir``
+```python
+rank = MPI.COMM_WORLD.Get_rank()
+size = MPI.COMM_WORLD.Get_size()
+
+skewerID_arr = np.arange(nSkewers)
+skewerIDs_rank = np.arghwere((skewerID_arr % size) == rank).flatten()
+
+for nSkewerID in skewerID_rank:
+    ...
+    tau_local[nSkewerID] = tau
+```
+
+If we have 10 skewers and 4 processors, we have the following ranks responsible for following skewer IDs
+
+1. rank 0 - [0,4,8]
+2. rank 1 - [1,5,9]
+3. rank 2 - [2,6]
+4. rank 3 - [3,7]
+
+This is all great and good and amazing, but there is the issue of actually grabbing the data. To open and write data onto the skewer HDF5 files, we use the Python package [h5py](http://docs.h5py.org) which provides a Pythonic interface for HDF5 format files. Luckily, the developers for h5py have provided detailed instructions on building h5py that utilizes Parallel HDF5 [here](https://docs.h5py.org/en/stable/mpi.html). 
+
+Details on how we accomplished this on [lux](https://lux-ucsc.readthedocs.io) is found in the file `create_h5pympi.txt`.
 
 
-After running this script we then have
+The default optical depth script works as usual, where the local optical depth is already saved in this repo
 
 ```bash
-/study/
-├── run_study.slurm
-├── optdepth.slurm
-├── powspec_diff.slurm
-├── powspec_diff_combo.slurm
-├── clear_skewers.slurm
-├── clear_study.slurm
-├── PowerSpectraPlotsDir
-│   └── ...
-└── scriptlogs
-│   └── ...
-└── clearinglogs
-│   └── ...
+$ python3 optdepth.py $SKEWERFILE -v
 ```
 
-woah! What has been placed in this study directory? Well we have 6 slurm files:
+The `-v` flag tells the script to be verbose and pring helpful info, while `$SKEWERFILE` is the HDF5 skewer output file.
 
-1. ``optdepth.slurm`` - calls optical depth calculation python script to add optical depths to skewer files
-2. ``powspec_diff.slurm`` - calls power spectra difference python script to plot the relative error of transmitted flux power spectrum
-3. ``powspecdiff_combo.slurm`` - calls power spectra difference combopython script to plot the relative error of transmitted flux power spectrum from different snapshot outputs
-4. ``run_study.slurm`` - submits previous 3 slurm files with appropriate dependencies
-5. ``clear_skewers.slurm`` - calls clear skewers python script to remove optical depths from skewer files, reset back to regular Cholla outputs
-6. ``clear_study.slurm`` - calls slurm script 5 and clears out the plots and script directories
+On the other hand, the new script runs with your favorite MPI standard
 
-Well what will be in the three directories?
+```bash
+$ mpirun -np $NUMNODES python3 $SKEWERFILE -v
+```
 
-1. ``scriptlogs`` - saves the outputs of how the optical depth was calculated and statistics of relative and absolute error
-2. ``PowerSpectraPlotsDir`` - saves individual and combined transmitted flux power spectra relative error without and with log-space
-3. ``clearinglogs`` - saves the outputs from clearing slurm files
+where the `-np` flag specifies the number of processors to use in the calculation, specified here with `$NUMNODES`.
 
-
-
+The outcome of this study can be found [here](https://cholla-cosmo.readthedocs.io/en/latest/study_gaussianspeedup_mpi.html#study-gauss-speed-mpi).
 
 
 
