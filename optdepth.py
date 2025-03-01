@@ -445,7 +445,7 @@ class ChollaSkewerCosmoCalculator:
 
         return arr_ghost
 
-    def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp, num_sigs=0):
+    def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp):
         '''
         Compute the optical depth for each cell along the line-of-sight
 
@@ -453,7 +453,6 @@ class ChollaSkewerCosmoCalculator:
             densityHI (arr): ionized Hydrogen comoving density [h2 Msun kpc-3]
             velocity_pec (arr): peculiar velocity [km s-1]
             temp (arr): temperature [K]
-            num_sigs (int): (optional) number of standard deviations to around mean
         Returns:
             tau (arr): optical depth for each cell
         '''
@@ -489,36 +488,13 @@ class ChollaSkewerCosmoCalculator:
         # initialize optical depths
         tau_ghost = self.snapCosmoCalc_ghost.create_arr()
 
-        if num_sigs == 0:
-            # OLD IMPLEMENTATION
-            for losid in range(self.n_los_ghost):
-                vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
-                # calculate line center shift in terms of broadening scale
-                y_L = (vH_L - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
-                y_R = (vH_R - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
-                # [cm3 * # density] = [cm3 * cm-3] = []
-                tau_ghost[losid] = sigma_Lya * np.sum(nHI_phys_ghost_cgs * (erf(y_R) - erf(y_L))) / 2.0
-        else:
-            # NEW IMPLEMENTATION -- dynamic scaling of x-sigs
-            five_sigs = (num_sigs) * (doppler_param_ghost_cgs)
-
-            vHC_fivesig_upp_all = self.vHubbleC_ghost_cgs + five_sigs
-            vHC_fivesig_low_all = self.vHubbleC_ghost_cgs - five_sigs
-
-            for losid in range(self.n_los_ghost):
-                vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
-                # evaluate the five-sig mask here
-                vHC_fivesig_upp = vHC_fivesig_upp_all[losid]
-                vHC_fivesig_low = vHC_fivesig_low_all[losid]
-                fivesig_mask = (velocity_phys_ghost_cgs < vHC_fivesig_upp) & (velocity_phys_ghost_cgs > vHC_fivesig_low)
-                vel_fivesig = velocity_phys_ghost_cgs[fivesig_mask]
-                doppler_fivesig = doppler_param_ghost_cgs[fivesig_mask]
-                nHI_fivesig = nHI_phys_ghost_cgs[fivesig_mask]
-                # calculate line center shift in terms of broadening scale
-                y_L = (vH_L - vel_fivesig) / doppler_fivesig
-                y_R = (vH_R - vel_fivesig) / doppler_fivesig
-                tau_ghost[losid] = (sigma_Lya / 2.0) * np.sum(nHI_fivesig * (erf(y_R) - erf(y_L)))
-
+        for losid in range(self.n_los_ghost):
+            vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
+            # calculate line center shift in terms of broadening scale
+            y_L = (vH_L - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
+            y_R = (vH_R - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
+            # [cm3 * # density] = [cm3 * cm-3] = []
+            tau_ghost[losid] = sigma_Lya * np.sum(nHI_phys_ghost_cgs * (erf(y_R) - erf(y_L))) / 2.0
 
         # clip edges
         tau = tau_ghost[self.n_ghost : -self.n_ghost]
@@ -979,14 +955,13 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
             densityHI = OTFSkewer.get_HIdensity(precision)
             temp = OTFSkewer.get_temperature(precision)
 
-            taus_allLOS = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp, num_sigs=0)
-
+            taus = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp)
 
             # update attr, bool arr, and tau arrs
             fObj[skew_key]['taucalc_bool'][nSkewerID] = True
             
-            fObj[skew_key]['taucalc_eff'][nSkewerID] = np.median(taus_allLOS)
-            fObj[skew_key]['taucalc_local'][nSkewerID] = taus_allLOS
+            fObj[skew_key]['taucalc_eff'][nSkewerID] = np.median(taus)
+            fObj[skew_key]['taucalc_local'][nSkewerID] = taus
 
     if verbose:
         print("Effective optical depth calculation completed along ", OTFSkewers_i.OTFSkewersiHead.skew_key)
