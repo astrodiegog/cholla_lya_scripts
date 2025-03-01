@@ -217,14 +217,14 @@ class ChollaFluxPowerSpectrumHead:
 
         return kcenters_fft
 
-    def get_FPS(self, local_opticaldepths, mean_flux=None, precision=np.float64):
+    def get_FPS(self, local_opticaldepths, flux_mean_global=None, precision=np.float64):
         '''
         Return the Flux Power Spectrum given the local optical depths.
             Expect 2-D array of shape (number skewers, line-of-sight cells)
 
         Args:
             local_opticaldepths (arr): local optical depths of all skewers
-            mean_flux (float): mean flux to scale deviations
+            flux_mean_global (float): (optional) global mean flux to scale local deviations
             precision (np type): (optional) numpy precision to use
         Return:
             kmode_fft (arr): Fourier Transform k mode array
@@ -237,8 +237,9 @@ class ChollaFluxPowerSpectrumHead:
 
         # calculate local transmitted flux (& its mean)
         fluxes = np.exp(-local_opticaldepths)
-        if mean_flux:
-            flux_mean = mean_flux
+        if flux_mean_global:
+            assert flux_mean_global > 0 
+            flux_mean = flux_mean_global
         else:
             flux_mean = np.mean(fluxes)
 
