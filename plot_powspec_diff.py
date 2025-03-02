@@ -148,7 +148,6 @@ def main():
 
     ylow, yupp = 1e-8, 1e-2
     _ = ax.set_ylim(ylow, yupp)
-    _ = ax.set_yscale('log')
 
     xlow, xupp = 1e-3, 1e-1
     _ = ax.set_xlim(xlow, xupp)
