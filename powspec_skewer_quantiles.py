@@ -600,22 +600,11 @@ def main():
     assert args.optdepthupp > args.optdepthlow
 
     # make sure required keys are there
-    # get data to save as future attrs
-    # get skewer specific information
-
     tau_local_key = "taucalc_local_allLOS"
     tau_eff_key = "taucalc_eff_allLOS"
     #tau_local_key = "taucalc_local"
     #tau_eff_key = "taucalc_eff"
     req_keys = [tau_local_key, tau_eff_key]
-    precision = np.float64
-    Omega_K, Omega_L, Omega_M, Omega_R, Omega_b = 0., 0., 0., 0., 0.
-    H0, w0, wa = 0., 0., 0.
-    Lbox = np.zeros(3, dtype=precision)
-    nCells = np.zeros(3, dtype=np.uint64)
-    nFFTs = np.zeros(3, dtype=np.uint64)
-    nstrides = np.zeros(3, dtype=precision)
-    nskewers_x, nskewers_y, nskewer_z = 0, 0, 0
 
     if args.verbose:
         print(f"--- Making sure {skewer_fPath} exists with required data ---")
@@ -630,6 +619,8 @@ def main():
         assert OTFSkewers_x.check_datakey(key)
         assert OTFSkewers_y.check_datakey(key)
         assert OTFSkewers_z.check_datakey(key)
+
+    precision = np.float64
 
     if args.verbose:
         print(f"--- Saving simulation box, skewer, and cosmology information ---")
@@ -656,7 +647,7 @@ def main():
     # create nFFT array
     nFFTs = np.zeros(3, dtype=np.uint64)
     nFFTs[0] = int(1. + nCells[0] / 2.)
-    nFFTs[1] = int(1. + nCells[1] / 2)
+    nFFTs[1] = int(1. + nCells[1] / 2.)
     nFFTs[2] = int(1. + nCells[2] / 2.)
     # create nstrides arrays
     nstrides = np.zeros(3, dtype=precision)
