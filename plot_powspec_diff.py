@@ -172,7 +172,7 @@ def main():
     if args.logspace:
         fName = f"{nOutput:.0f}_FluxPowerSpectra_LogDiff.png"
     else:
-        fName = f"{nOutput:.0f}_FluxPowerSpectra_LogDiff.png"
+        fName = f"{nOutput:.0f}_FluxPowerSpectra_Diff.png"
 
     img_fPath = Path(fName)
     img_fPath = outdir_dirPath / img_fPath
