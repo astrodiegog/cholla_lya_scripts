@@ -109,7 +109,7 @@ def main():
         assert nQuantiles == 1
 
         # save nOutput to place in file name
-        nOutputs = int(fObj.attrs.get('nOutput'))
+        nOutput = int(fObj.attrs.get('nOutput'))
 
         # make sure we can actually compare these two files
         assert 'dlogk' in fObj.attrs
@@ -155,7 +155,9 @@ def main():
 
     # set log-scale
     _ = ax.set_xscale('log')
-    
+    if args.logspace:
+        _ = ax.set_yscale('log')
+
     # add redshift str
     xlow, xupp = 1e-3, 5e-2
     redshift_str = rf"$z = {current_z:.4f}$"
@@ -167,9 +169,16 @@ def main():
     _ = ax.grid(which='both', axis='both', alpha=0.3)
 
     # save figure
-    fName = f"delta_FPS_optdepthbin_{nOutput:.0f}nOutput.png"
+    if args.logspace:
+        fName = f"{nOutput:.0f}_FluxPowerSpectra_LogDiff.png"
+    else:
+        fName = f"{nOutput:.0f}_FluxPowerSpectra_LogDiff.png"
+
     img_fPath = Path(fName)
     img_fPath = outdir_dirPath / img_fPath
+
+    if args.verbose:
+        print(f"--- Placing plot at {img_fPath} ---")
 
     _ = fig.savefig(img_fPath, dpi=256, bbox_inches = "tight")
     plt.close(fig)
