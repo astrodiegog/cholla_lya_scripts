@@ -705,6 +705,9 @@ def main():
 
     # take mask of effective optical depths in range and sort by effective optical depth
     indices_all_inbounds_mask_taueffsort = tau_eff_all_inbounds_mask[indices_all_taueffsort]
+
+    if args.verbose:
+        print(f"--- We have sorted skewers by effective optical depth ---")
  
     # array of sorted indices that fall within range
     indices_all_taueffsort_inbounds = indices_all_taueffsort[indices_all_inbounds_mask_taueffsort]
@@ -846,6 +849,9 @@ def main():
         curr_str += f"{100 * nskews_z_outQuantile / nskewers_tot:.4f} % | --- "
         print(curr_str)
 
+    if args.verbose:
+        print(f"--- Calculating cosmology information for flux power spectrum ---")
+
     # calculate Hubble flow across a cell
     chCosmoHead = ChollaCosmologyHead(Omega_M, Omega_R, Omega_K, Omega_L, w0, wa, H0)
     chSnapCosmoHead = ChollaSnapCosmologyHead(scale_factor, chCosmoHead)
@@ -871,6 +877,9 @@ def main():
     kvals_fft_x = FPSHead_x.get_kvals_fft(dtype=precision)
     kvals_fft_y = FPSHead_y.get_kvals_fft(dtype=precision)
     kvals_fft_z = FPSHead_z.get_kvals_fft(dtype=precision)
+
+    if args.verbose:
+        print("--- Found k-modes along each axis, now moving on to actually performing flux power spectrum calculation in each quantile ---")
 
     for nquantile in range(args.nquantiles):
         quantile_key = f'quantile_{nquantile:.0f}'
@@ -922,6 +931,9 @@ def main():
             FPS_quantiles[quantile_key][f'FPS_z'] += FPS_currQuantile_z
 
     
+    if args.verbose:
+        print(f"--- Flux power spectrum calculation completed along each axis ! Now saving data ---")
+
     # write data to where skewer directory resides
     skewersParent_dirPath = skewer_fPath.parent.parent.resolve()
     outfile_fname = f"{nOutput:.0f}_fluxpowerspectrum_optdepthbin.h5"
@@ -964,9 +976,8 @@ def main():
 
         # flux power spectra info
         for nquantile in range(args.nquantiles):
-            indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
             quantile_key = f'quantile_{nquantile:.0f}'
-            indx_currQuantile = indices_all_taueffsort_inbounds[indices_all_inbounds_inquantile]
+            indx_currQuantile = indices_all_quantiles[quantile_key]
             FPS_currQuantile = FPS_quantiles[quantile_key]
 
             # grab flux power spectra
@@ -993,7 +1004,8 @@ def main():
             _ = quantile_group.create_dataset('FPS_z', data=FPS_z)
 
 
-
+    if args.verbose:
+        print(f"--- Done ! ---")
 
 
 if __name__=="__main__":
