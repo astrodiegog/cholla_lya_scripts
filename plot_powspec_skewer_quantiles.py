@@ -148,7 +148,7 @@ def main():
             l_optdepth_mean[nQuantile] = np.log10(tau_eff_mean)
             
             if args.verbose:
-                curr_str = f"--- | {nquantile:.0f} | "
+                curr_str = f"--- | {nQuantile:.0f} | "
                 curr_str += f"{tau_eff_min:.4e} | "
                 curr_str += f"{tau_eff_max:.4e} | "
                 curr_str += f"{tau_eff_mean:.4e} % | --- "
