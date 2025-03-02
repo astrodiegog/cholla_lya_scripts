@@ -102,11 +102,9 @@ def main():
         # make sure we're _actually_ looking at only one output + one quantile to compare against analysis
         nQuantiles = fObj.attrs['nquantiles'].item()
         assert nQuantiles == 1
-        nOutputs = np.array(fObj.attrs.get('nOutputs'))
-        assert nOutputs.size == 1
 
         # save nOutput to place in file name
-        nOutput = int(nOutputs.flatten())
+        nOutputs = int(fObj.attrs.get('nOutput'))
 
         # grab k values
         assert 'dlogk' in fObj.attrs
