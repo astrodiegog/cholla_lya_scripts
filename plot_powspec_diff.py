@@ -90,9 +90,14 @@ def main():
     # get power spectra from analysis path
     Pk_analysis = np.array([])
     current_z = 0.
+    dlogk_analysis = 0.
     with h5py.File(analysis_fPath, 'r') as fObj_analysis:
         Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')[:]
+        kvals_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('k_vals')[:]
         current_z = fObj_analysis.attrs['current_z'].item()
+
+        l_kvals_analysis = np.log10(kvals_analysis)
+        dlogk_analysis = np.median(l_kvals_analysis[1:] - l_kvals_analysis[:-1])
 
     
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
@@ -106,8 +111,12 @@ def main():
         # save nOutput to place in file name
         nOutputs = int(fObj.attrs.get('nOutput'))
 
-        # grab k values
+        # make sure we can actually compare these two files
         assert 'dlogk' in fObj.attrs
+        assert np.isclose(fObj.attrs.get('dlogk'), dlogk_analysis)
+
+
+        # grab k values
         k_edges = fObj.attrs.get('k_edges_dlogk')
         l_kedges = np.log10(k_edges)
         l_kcenters = (l_kedges[1:] + l_kedges[:-1]) / 2.
