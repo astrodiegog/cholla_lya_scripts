@@ -146,7 +146,10 @@ def main():
     _ = ax.set_xlabel(xlabel_str)
     _ = ax.set_ylabel(ylabel_str)
 
-    ylow, yupp = 1e-8, 1e-2
+    if args.logspace:
+        ylow, yupp = 1e-8, 1e-2
+    else:
+        ylow, yupp = -0.05, 0.05
     _ = ax.set_ylim(ylow, yupp)
 
     xlow, xupp = 1e-3, 1e-1
@@ -161,7 +164,10 @@ def main():
     xlow, xupp = 1e-3, 5e-2
     redshift_str = rf"$z = {current_z:.4f}$"
     x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
-    y_redshift = 3.e-8
+    if args.logspace:
+        y_redshift = 3.e-8
+    else:
+        y_redshift = -0.03
     _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
 
     # add background grid
