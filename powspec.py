@@ -1265,12 +1265,6 @@ def main():
                 _ = quantile_group.create_dataset(f'FPSz_nOutput_{nOutput:.0f}', data=FPSz_nOutput)
 
 
-#placebo: check Lambda-CDM. split into different tau. normalization of the power spectra knows about tau, soi
-
-#1. science movtivation
-#2. what I did
-#3. results
- 
 
 
 if __name__=="__main__":
