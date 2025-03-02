@@ -85,8 +85,8 @@ def main():
         if args.dlogk and args.unique:
             print("--- Ruh-roh! You can't specify both unique and dlogk !---")
 
-    assert args.dlogk or args.unique
-    assert not(args.dlogk and args.unique)
+    # ^ is xor (exclusive or) operator
+    assert args.dlogk ^ args.unique
 
     precision = np.float64
 
@@ -102,15 +102,22 @@ def main():
         outdir_dirPath = analysis_fPath.parent.resolve()
 
 
+    # initialize info for plotting
     lines_powspec = []
     redshift = 0.
     nOutput = 0
 
     with h5py.File(analysis_fPath, 'r') as fObj:
+        # grab required info
         nQuantiles = fObj.attrs.get('nquantiles')
         nOutput = fObj.attrs.get('nOutput')
         scale_factor = fObj.attrs.get('scale_factor')
         redshift = fObj.attrs.get('redshift')
+
+        if args.verbose:
+            print(f"--- Redshift / Scale factor : {redshift:.4f} / {scale_factor:.4f}")
+            print(f"--- Number of Quantiles : {nQuantiles:.0f}")
+            print(f"--- Original skewer file was output number {nOutput:.0f}")
 
         # grab k values
         if args.dlogk:
@@ -119,12 +126,18 @@ def main():
             l_kedges = np.log10(k_edges)
             l_kcenters = (l_kedges[1:] + l_kedges[:-1]) / 2.
             k_centers = 10**(l_kcenters)
-
         if args.unique:
             assert 'k_uniq' in fObj.attrs
             k_centers = fObj.attrs.get('k_uniq')
 
+        # save log_10 of all median optical depths in each quantile
         l_optdepth_mean = np.zeros(nQuantiles)
+
+        if args.verbose:
+            curr_str = f'--- Distribution of skewers in nOutput {nOutput} / scale factor: '
+            curr_str += f'{scale_factor:.4f} / redshift: {redshift:.4f} --- '
+            print(curr_str)
+            print(f'--- | nquantile | tau_min | tau_max | Mean tau_eff | ---')
 
         for nQuantile in range(nQuantiles):
             currQuantile_key = f'FluxPowerSpectrum_quantile_{nQuantile:.0f}'
@@ -133,24 +146,31 @@ def main():
             tau_eff_max = FPS_currQuantile.attrs.get('tau_max')
             tau_eff_mean = FPS_currQuantile.attrs.get('tau_mean')
             l_optdepth_mean[nQuantile] = np.log10(tau_eff_mean)
+            
+            if args.verbose:
+                curr_str = f"--- | {nquantile:.0f} | "
+                curr_str += f"{tau_eff_min:.4e} | "
+                curr_str += f"{tau_eff_max:.4e} | "
+                curr_str += f"{tau_eff_mean:.4e} % | --- "
+                print(curr_str)
 
             # grab FPS values
             if args.dlogk:
                 FPS_all = FPS_currQuantile.get('FPS_dlogk')[:]
-
             if args.unique:
                 FPS_all = FPS_currQuantile.get('FPS_uniq')[:]
 
+            # calculate delta2F and clear out zeros & nans
             delta2F = (1. / np.pi) * k_centers * FPS_all
             goodDelta2F_mask = ~((delta2F == 0.) | (np.isnan(delta2F)))
             goodDelta2F = delta2F[goodDelta2F_mask]
             goodkcenters = k_centers[goodDelta2F_mask]
 
-            lookback_elm = np.zeros((np.sum(goodDelta2F_mask), 2))
-            lookback_elm[:,0] = goodkcenters
-            lookback_elm[:,1] = goodDelta2F
-            _ = lines_powspec.append(lookback_elm)
-
+            # save k vs delta2F element
+            lines_powspec_elm = np.zeros((goodDelta2F.size, 2))
+            lines_powspec_elm[:,0] = goodkcenters
+            lines_powspec_elm[:,1] = goodDelta2F
+            _ = lines_powspec.append(lines_powspec_elm)
 
             if args.verbose and args.saveall:
                 print(f"Plotting quantile {nQuantile:.0f}")
@@ -159,7 +179,7 @@ def main():
                 fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
                 _ = ax.plot(goodkcenters, goodDelta2F)
 
-                # place labels & limits if not already set
+                # place labels & limits
                 xlabel_str = r'$k\ [\rm{s\ km^{-1}}] $'
                 ylabel_str = r'$ \Delta_F^2 (k) $'
                 _ = ax.set_xlabel(xlabel_str)
@@ -179,18 +199,18 @@ def main():
                 _ = ax.grid(which='both', axis='both', alpha=0.3)
 
                 # add optical depth info
-                optdepth_str = rf"${tau_eff_min:.4f} <$"
-                optdepth_str += r"$\tau_{ \rm{eff} }$"
-                optdepth_str += rf"$< {tau_eff_max:.4f}$"
-                x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
-                y_redshift = ylow * 3.
-                _ = ax.annotate(optdepth_str, xy=(x_redshift, y_redshift), fontsize=20)
+                taueff_str = rf"${tau_eff_min:.4f} <$"
+                taueff_str += r"$\tau_{ \rm{eff} }$"
+                taueff_str += rf"$< {tau_eff_max:.4f}$"
+                x_taueff = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
+                y_taueff = ylow * 3.
+                _ = ax.annotate(taueff_str, xy=(x_taueff, y_taueff), fontsize=20)
 
                 # add redshift info
-                optdepth_str = rf"$z = {redshift:.3f}$"
+                redshift_str = rf"$z = {redshift:.3f}$"
                 x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
                 y_redshift = yupp / 3.
-                _ = ax.annotate(optdepth_str, xy=(x_redshift, y_redshift), fontsize=20)
+                _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
 
                 # save figure
                 fName = f"{nOutput:.0f}_{currQuantile_key}.png"
@@ -226,10 +246,10 @@ def main():
     _ = ax.set_yscale('log')
 
     # add redshift info
-    optdepth_str = rf"$z = {redshift:.3f}$"
+    redshift_str = rf"$z = {redshift:.3f}$"
     x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
     y_redshift = yupp / 3.
-    _ = ax.annotate(optdepth_str, xy=(x_redshift, y_redshift), fontsize=20)
+    _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
 
     # place colorbar
     cbar_ax = fig.add_axes([0.93, 0.106, 0.04, 0.78])
