@@ -676,6 +676,7 @@ def main():
     tau_eff_all[ : (nskewers_x)] = tau_eff_x
     tau_eff_all[ (nskewers_x) : (nskewers_x + nskewers_y)] = tau_eff_y
     tau_eff_all[ (nskewers_x + nskewers_y) : ] = tau_eff_z
+    tau_eff_all_mean = np.mean(tau_eff_all)
 
     # create a mask of all effective optical depths within our range
     tau_eff_all_inbounds_mask = (tau_eff_all > args.optdepthlow) & (tau_eff_all < args.optdepthupp)
@@ -958,6 +959,7 @@ def main():
         # analysis info
         _ = fObj.attrs.create('tau_eff_low', args.optdepthlow)
         _ = fObj.attrs.create('tau_eff_upp', args.optdepthupp)
+        _ = fObj.attrs.create('tau_eff_mean', tau_eff_all_mean)
         _ = fObj.attrs.create('nquantiles', args.nquantiles)
         _ = fObj.attrs.create('k_x', kvals_fft_x)
         _ = fObj.attrs.create('k_y', kvals_fft_y)
