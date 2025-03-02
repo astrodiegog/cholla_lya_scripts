@@ -600,10 +600,8 @@ def main():
     assert args.optdepthupp > args.optdepthlow
 
     # make sure required keys are there
-    tau_local_key = "taucalc_local_allLOS"
-    tau_eff_key = "taucalc_eff_allLOS"
-    #tau_local_key = "taucalc_local"
-    #tau_eff_key = "taucalc_eff"
+    tau_local_key = "taucalc_local"
+    tau_eff_key = "taucalc_eff"
     req_keys = [tau_local_key, tau_eff_key]
 
     if args.verbose:
