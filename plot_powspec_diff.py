@@ -51,7 +51,7 @@ def create_parser():
 
 def main():
     '''
-    Plot and compare power spectra from opt depth binning against an analysis file name
+    Plot and compare power spectra from opt depth binning against a Cholla OTF analysis file
     '''
 
     # Create parser
@@ -74,14 +74,17 @@ def main():
     precision = np.float64
 
     FPSoptdepthbin_fPath = Path(args.FPS_optdepthbin_fname).resolve()
+    assert FPSoptdepthbin_fPath.is_file()
+
     analysis_fPath = Path(args.analysis_fname).resolve()
+    assert analysis_fPath.is_file()
 
     if args.outdir:
         outdir_dirPath = Path(args.outdir)
         outdir_dirPath = outdir_dirPath.resolve()
         assert outdir_dirPath.is_dir()
     else:
-        # write data to where skewer directory resides
+        # write data to where FPS opt depth bin analysis file resides
         outdir_dirPath = FPSoptdepthbin_fPath.parent.resolve()
 
     # get power spectra from analysis path
@@ -91,6 +94,7 @@ def main():
         Pk_analysis = fObj_analysis['lya_statistics']['power_spectrum'].get('p(k)')[:]
         current_z = fObj_analysis.attrs['current_z'].item()
 
+    
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
     nOutput = 0
     with h5py.File(FPSoptdepthbin_fPath, 'r') as fObj:
@@ -100,25 +104,34 @@ def main():
         assert nQuantiles == 1
         nOutputs = np.array(fObj.attrs.get('nOutputs'))
         assert nOutputs.size == 1
+
+        # save nOutput to place in file name
         nOutput = int(nOutputs.flatten())
-        k_edges = np.array(fObj.attrs.get('k_edges'))
+
+        # grab k values
+        assert 'dlogk' in fObj.attrs
+        k_edges = fObj.attrs.get('k_edges_dlogk')
         l_kedges = np.log10(k_edges)
-        d_l_kedges = l_kedges[1:] - l_kedges[:-1]
-        l_kcenters = l_kedges[:-1]  + (d_l_kedges / 2.)
+        l_kcenters = (l_kedges[1:] + l_kedges[:-1]) / 2.
         k_centers = 10**(l_kcenters)
 
         if args.verbose:
             print("--- Plotting both relative difference ---")
-        for nQuantile, quantile_groupkey in enumerate(quantile_groupkeys):
-            FPS_currQuantile = fObj[quantile_groupkey]['P(k)']
-            
-            delta2F = (1. / np.pi) * k_centers * FPS_currQuantile
-            delta2F_analysis = (1. / np.pi) * k_centers * Pk_analysis
-            delta2F_fracdiff = (delta2F - delta2F_analysis) / delta2F_analysis
+        
+        quantile0_key = f'FluxPowerSpectrum_quantile_0'
+        FPS_quantile0 = fObj.get(quantile0_key)
+        FPS_all = FPS_quantile0.get('FPS_dlogk')[:]
+        
+        # calculate delta2F and relative difference wrt Cholla OTF analysis 
+        delta2F = (1. / np.pi) * k_centers * FPS_all
+        delta2F_analysis = (1. / np.pi) * k_centers * Pk_analysis
+        delta2F_fracdiff = (delta2F - delta2F_analysis) / delta2F_analysis
 
-            # no nans here !
-            goodDelta2F = ~np.isnan(delta2F_fracdiff)
-            _ = ax.plot(k_centers[goodDelta2F], np.abs(delta2F_fracdiff[goodDelta2F]))
+        # no nans here !
+        goodDelta2F = ~np.isnan(delta2F_fracdiff)
+
+        # use my k_centers to plot
+        _ = ax.plot(k_centers[goodDelta2F], np.abs(delta2F_fracdiff[goodDelta2F]))
 
     # place labels & limits if not already set
     xlabel_str = r'$k\ [\rm{s\ km^{-1}}] $'
