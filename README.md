@@ -67,8 +67,9 @@ The attributes attached to the root group `nOutput_fluxpowerspectrum_optdepthbin
 12. ``nStrides`` - array of 3 ints, detailing the number of cell-strides taken between skewers in each dimension
 13. ``nSkewers`` - array of 3 ints, detailing the number of skewers in each dimension
 14. ``tau_eff_low`` and ``tau_eff_upp`` - input arguments detailing the upper and lower effective optical depth to use in tiling
-15. ``nquantiles`` - input argument detailing the number of quantiels to use in tiling
-16. ``k_x``, ``k_y``, and ``k_z`` - arrays of size `1. + (nCells / 2.)` that hold the k-mode values in each dimension in units of $\textrm{s}\ \textrm{km}^{-1}$
+15. ``tau_eff_mean`` - mean of all effective optical depth
+16. ``nquantiles`` - input argument detailing the number of quantiels to use in tiling
+17. ``k_x``, ``k_y``, and ``k_z`` - arrays of size `1. + (nCells / 2.)` that hold the k-mode values in each dimension in units of $\textrm{s}\ \textrm{km}^{-1}$
 
 
 The attribuets attached to each quantile group ``FluxPowerSpectrum_quantile_0`` give details on this quantile region. The following avalues are attached in this attribute
