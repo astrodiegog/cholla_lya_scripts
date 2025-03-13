@@ -786,6 +786,14 @@ def main():
             print(curr_str)
 
 
+    flux_local_all = np.zeros( (tau_local_x.size + tau_local_y.size + tau_local_z.size), dtype=np.float64)
+    flux_local_all[ : tau_local_x.size] = np.exp(-tau_local_x)
+    flux_local_all[ tau_local_x.size : tau_local_x.size + tau_local_y.size] = np.exp(-tau_local_y)
+    flux_local_all[tau_local_x.size + tau_local_y.size : ] = np.exp(-tau_local_z)
+    flux_local_all_mean = np.mean(flux_local_all)
+    tau_eff_bruno = np.log(flux_local_all_mean)
+    flux_local_all = _
+
     # find the index of the skewers that do not fall within the input range & print its info
     indx_outQuantiles = np.argwhere(~tau_eff_all_inbounds_mask)
     nskews_outQuantiles = np.sum(~tau_eff_all_inbounds_mask)
@@ -960,6 +968,7 @@ def main():
         _ = fObj.attrs.create('tau_eff_low', args.optdepthlow)
         _ = fObj.attrs.create('tau_eff_upp', args.optdepthupp)
         _ = fObj.attrs.create('tau_eff_mean', tau_eff_all_mean)
+        _ = fObj.attrs.create('tau_eff_bruno', tau_eff_bruno)
         _ = fObj.attrs.create('nquantiles', args.nquantiles)
         _ = fObj.attrs.create('k_x', kvals_fft_x)
         _ = fObj.attrs.create('k_y', kvals_fft_y)
