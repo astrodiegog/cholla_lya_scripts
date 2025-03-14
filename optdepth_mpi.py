@@ -901,8 +901,14 @@ def main():
     # create ChollaOTFSkewers object
     OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath, comm)
 
+    if args.verbose:
+        t_init_start = MPI.Wtime()
+
     # add progress attribute, boolean mask for whether tau is calculated, and tau itself
     init_taucalc(OTFSkewers, comm, restart=args.restart, verbose=args.verbose)
+    if args.verbose:
+        t_init_end = MPI.Wtime()
+        print(f"--- {rank_idstr} : Took {t_init_end - t_init_start:.4e} secs to initialize info ---")
 
     # create cosmology and snapshot header
     chCosmoHead = ChollaCosmologyHead(OTFSkewers.Omega_M, OTFSkewers.Omega_R, 
