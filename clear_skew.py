@@ -55,11 +55,15 @@ def main():
 
     # keep default Cholla skewer outputs from datasets
     keys2keep = ['HI_density', 'HeII_density', 'density', 'los_velocity', 'temperature', 'vel_Hubble']
+    skew_keys = ['skewers_x', 'skewers_y', 'skewers_z']
 
     with h5py.File(skewer_fPath, 'r+') as fObj:
         for i_skew in fObj.keys():
             if args.verbose:
                 print('--- ', i_skew)
+            if i_skew not in skew_keys:
+                continue
+
             for attr in dict(fObj[i_skew].attrs).keys():
                 if args.verbose:
                     print('--- \t', attr)
