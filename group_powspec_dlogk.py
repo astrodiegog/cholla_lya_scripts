@@ -219,9 +219,9 @@ def main():
         nCells = fObj.attrs.get('nCells')[:]
 
         # grab FFT info
-        k_x = fObj.attrs.get('k_x')[:]
-        k_y = fObj.attrs.get('k_y')[:]
-        k_z = fObj.attrs.get('k_z')[:]
+        k_x = fObj.get('k_x')[:]
+        k_y = fObj.get('k_y')[:]
+        k_z = fObj.get('k_z')[:]
 
     # calculate number of nFFT bins
     nFFTs = np.zeros_like(nCells, dtype=np.int64)

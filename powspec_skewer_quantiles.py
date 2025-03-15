@@ -981,9 +981,9 @@ def main():
         _ = fObj.attrs.create('tau_eff_mean', tau_eff_all_mean)
         _ = fObj.attrs.create('tau_eff_bruno', tau_eff_bruno)
         _ = fObj.attrs.create('nquantiles', args.nquantiles)
-        _ = fObj.attrs.create('k_x', kvals_fft_x)
-        _ = fObj.attrs.create('k_y', kvals_fft_y)
-        _ = fObj.attrs.create('k_z', kvals_fft_z)
+        _ = fObj.create_dataset('k_x', data=kvals_fft_x)
+        _ = fObj.create_dataset('k_y', data=kvals_fft_y)
+        _ = fObj.create_dataset('k_z', data=kvals_fft_z)
 
         # flux power spectra info
         for nquantile in range(args.nquantiles):
