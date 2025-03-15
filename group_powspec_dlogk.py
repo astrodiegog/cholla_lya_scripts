@@ -307,9 +307,11 @@ def main():
     with h5py.File(analysis_fPath, 'r+') as fObj:
         nQuantiles = fObj.attrs.get('nquantiles')
 
-        # write attrs
+        # write attr
         _ = fObj.attrs.create('dlogk', args.dlogk)
-        _ = fObj.attrs.create('k_edges_dlogk', k_edges)
+
+        # write kedges
+        _ = fObj.create_dataset('k_edges_dlogk', data=k_edges)
 
         for nQuantile in range(nQuantiles):
             currQuantile_key = f'FluxPowerSpectrum_quantile_{nQuantile:.0f}'

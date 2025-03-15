@@ -63,9 +63,9 @@ def main():
     # grab required info
     with h5py.File(analysis_fPath, 'r') as fObj:
         # grab FFT info
-        k_x = fObj.attrs.get('k_x')[:]
-        k_y = fObj.attrs.get('k_y')[:]
-        k_z = fObj.attrs.get('k_z')[:]
+        k_x = fObj.get('k_x')[:]
+        k_y = fObj.get('k_y')[:]
+        k_z = fObj.get('k_z')[:]
 
     # create array for all k-values
     k_all = np.zeros(k_x.size + k_y.size + k_z.size, dtype=precision)
@@ -83,8 +83,8 @@ def main():
     with h5py.File(analysis_fPath, 'r+') as fObj:
         nQuantiles = fObj.attrs.get('nquantiles')
 
-        # write attrs
-        _ = fObj.attrs.create('k_uniq', k_uniq)
+        # write k modes
+        _ = fObj.create_dataset('k_uniq', data=k_uniq)
 
         for nQuantile in range(nQuantiles):
             currQuantile_key = f'FluxPowerSpectrum_quantile_{nQuantile:.0f}'

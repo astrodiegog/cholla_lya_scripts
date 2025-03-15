@@ -117,7 +117,7 @@ def main():
 
 
         # grab k values
-        k_edges = fObj.attrs.get('k_edges_dlogk')
+        k_edges = fObj.get('k_edges_dlogk')[:]
         l_kedges = np.log10(k_edges)
         l_kcenters = (l_kedges[1:] + l_kedges[:-1]) / 2.
         k_centers = 10**(l_kcenters)

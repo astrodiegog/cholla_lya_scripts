@@ -122,13 +122,13 @@ def main():
         # grab k values
         if args.dlogk:
             assert 'dlogk' in fObj.attrs
-            k_edges = fObj.attrs.get('k_edges_dlogk')
+            k_edges = fObj.get('k_edges_dlogk')[:]
             l_kedges = np.log10(k_edges)
             l_kcenters = (l_kedges[1:] + l_kedges[:-1]) / 2.
             k_centers = 10**(l_kcenters)
         if args.unique:
-            assert 'k_uniq' in fObj.attrs
-            k_centers = fObj.attrs.get('k_uniq')
+            assert 'k_uniq' in fObj.keys()
+            k_centers = fObj.get('k_uniq')[:]
 
         # save log_10 of all median optical depths in each quantile
         l_optdepth_mean = np.zeros(nQuantiles)
