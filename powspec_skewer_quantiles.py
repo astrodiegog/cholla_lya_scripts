@@ -22,7 +22,7 @@ def create_parser():
     '''
 
     parser = argparse.ArgumentParser(
-        description="Compute and append power spectra")
+        description="Compute power spectra in nquantiles bins")
 
     parser.add_argument("skewfname", help='Cholla skewer output file name', type=str)
 
@@ -31,6 +31,8 @@ def create_parser():
     parser.add_argument("optdepthlow", help='Lower effective optical depth limit to bin', type=float)
 
     parser.add_argument("optdepthupp", help='Upper effective optical depth limit to bin', type=float)
+
+    parser.add_argument('-o', '--outdir', help='Output directory for analysis files', type=str)
 
     parser.add_argument('-v', '--verbose', help='Print info along the way',
                         action='store_true')
@@ -592,6 +594,17 @@ def main():
     assert skewer_fPath.is_file()
     nOutput = int(skewer_fPath.name.split('_')[0])   # file names are nOutput_skewers.h5
 
+    if args.outdir:
+        outdir_dirPath = Path(args.outdir)
+        outdir_dirPath = outdir_dirPath.resolve()
+        assert outdir_dirPath.is_dir()
+    else:
+        outdir_dirPath = skewer_fPath.parent.parent.resolve()
+
+    if args.verbose:
+        print(f"--- Placing output files in : {outdir_dirPath} ---")
+
+
     # ensure number of quantiles is reasonable
     assert args.nquantiles > 0
 
@@ -932,9 +945,8 @@ def main():
         print(f"--- Flux power spectrum calculation completed along each axis ! Now saving data ---")
 
     # write data to where skewer directory resides
-    skewersParent_dirPath = skewer_fPath.parent.parent.resolve()
     outfile_fname = f"{nOutput:.0f}_fluxpowerspectrum_optdepthbin.h5"
-    outfile_fPath = skewersParent_dirPath / Path(outfile_fname)
+    outfile_fPath = outdir_dirPath / Path(outfile_fname)
     
     if args.verbose:
         print(f'--- Saving file at : {outfile_fPath} ---')
