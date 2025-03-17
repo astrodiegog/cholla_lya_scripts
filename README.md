@@ -67,6 +67,8 @@ Well what will be in the three directories?
 
 
 
+## Future
 
+This topic branch has served its purpose, with details on the study found [here](https://cholla-cosmo.readthedocs.io/en/latest/study_gaussianspeedup.html#study-gauss-speed). In effect, this branch will no longer be maintained.
 
 
