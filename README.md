@@ -61,5 +61,7 @@ The goal of this study is to document the difference that results from this chan
 
 
 
+## Future
 
+This topic branch has served its purpose, with details on the study found [here](https://cholla-cosmo.readthedocs.io/en/latest/study_powspec_deltaFcalc.html#study-powspec-deltafcalc). In effect, this branch will no longer be maintained.
 
