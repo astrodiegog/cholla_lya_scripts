@@ -703,9 +703,8 @@ def main():
     # get data to save as future attrs
     # get skewer specific information
 
-    #req_keys = ['taucalc_local', 'taucalc_eff']
-    tau_local_key = "taucalc_local_allLOS"
-    tau_eff_key = "taucalc_eff_allLOS"
+    tau_local_key = "taucalc_local"
+    tau_eff_key = "taucalc_eff"
     req_keys = [tau_local_key, tau_eff_key]
     precision = np.float64
     Omega_K, Omega_L, Omega_M, Omega_R, Omega_b = 0., 0., 0., 0., 0.
@@ -1200,7 +1199,7 @@ def main():
 
     # write data to where skewer directory resides
     skewerParent_dirPath = skewer_dirPath.parent.resolve()
-    outfile_fname = f"fluxpowerspectrum_optdepthbin.h5"
+    outfile_fname = f"skewdir_fluxpowerspectrum_optdepthbin.h5"
     outfile_fPath = skewerParent_dirPath / Path(outfile_fname)
 
     with h5py.File(outfile_fPath, 'w') as fObj:
