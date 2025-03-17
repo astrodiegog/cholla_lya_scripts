@@ -1,3 +1,16 @@
+"""
+This script calculates the local optical depth for all skewers in a Cholla
+    skewer file. The default native datasets expected in the skewer files
+    are at least the ionized HI density, peculiar velocity, and temperature.
+    We assume a Gaussian line profile. This script assigns ranks to different
+    skewers within a skewer file to produce the computation more quickly. This
+    script assumes that HDF5 was built with parallelized version, and the python
+    package h5py was built with parallelized version as well.
+
+Usage:
+    $ mpirun -np 8 python3 optdepth_mpi.py 0_skewers.h5 -v
+"""
+
 import argparse
 from pathlib import Path
 from mpi4py import MPI
@@ -14,8 +27,8 @@ from scipy.special import erf
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the skewer file name. 
+        Allow for verbosity
 
     Args:
         ...
@@ -38,8 +51,6 @@ def create_parser():
 
 ###
 # Create all data structures to fully explain optical depth calculation
-# These data structures are pretty thorough, and not every line is readily needed
-# but I prioritize readability over less lines of code
 ###
 
 ###
@@ -724,11 +735,9 @@ class ChollaOnTheFlySkewers:
         return OTFSkewerz
 
 
-###
-# Study specific functions
-###
-
-
+#####
+# Script specific functions
+#####
 
 
 def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
@@ -849,7 +858,6 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=Fal
             fObj[skew_key]['taucalc_bool'][nSkewerID] = True
             fObj[skew_key]['taucalc_eff'][nSkewerID] = np.median(taus)
             fObj[skew_key]['taucalc_local'][nSkewerID] = taus
-
 
 
     if verbose:

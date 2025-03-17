@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""
+This script removes any datasets that are not native to Cholla skewer files
+
+Usage:
+    $ python3 clear_skew.py 0_skewers.h5 -v
+"""
+
 import argparse
 from pathlib import Path
 
@@ -11,8 +19,8 @@ import h5py
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the skewer file name to
+        clean up. Allow for verbosity
 
     Args:
         ...
@@ -75,7 +83,8 @@ def main():
                 if data_key not in keys2keep:
                     del fObj[i_skew][data_key]
 
-    print(f"--- Done cleaning up file : {skewer_fPath} ---")
+    if args.verbose:
+        print(f"--- Done cleaning up file : {skewer_fPath} ---")
 
         
 
