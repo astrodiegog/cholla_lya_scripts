@@ -1,3 +1,50 @@
+#!/usr/bin/env python3
+"""
+This script takes the transmitted flux power spectrum binned by some number
+    of quantiles bounded by a lower and upper effective optical depth. This
+    script assumes that the optical depth has been computed and saved to the 
+    skewer files as taucalc_local and taucalc_eff. This script will create a
+    file with the following structure
+
+nOutput_fluxpowerspectrum_optdepthbin.h5
+├── attrs
+├── FluxPowerSpectrum_quantile_0
+│   └── attrs
+│   └── indices
+│   └── FPS_x
+│   └── FPS_y
+│   └── FPS_z
+├── FluxPowerSpectrum_quantile_1
+│   └── attrs
+│   └── indices
+│   └── FPS_x
+│   └── FPS_y
+│   └── FPS_z
+...
+├── FluxPowerSpectrum_quantile_NQUANTILE
+│   └── attrs
+│   └── indices
+│   └── FPS_x
+│   └── FPS_y
+│   └── FPS_z
+└── ...
+
+    where the attributes for the root group will inherit the same attributes
+    as from the skewer file. The attributes for each quantile group saves the 
+    min, max, and mean effective optical depth of this quantile. The indices
+    dataset describes the details of the skewer that lands in this quantile.
+    Values will run from zero to the total number of skewers summed along all 
+    axes, so we choose to have indices (0, nCells[0]) correspond to skewer IDs 
+    along the x-axis, (nCells[0], nCells[1]) to skewer IDs along the y-axis, 
+    and (nCells[0] + nCells[1], ) to skewer IDs along the z-axis. The flux
+    power spectra in each direction is also saved in the quantiles.
+
+Usage for 10 quantiles bounded by optical depths 0.001 and 100.0:
+    $ python3 powspec_skewer_quantiles.py 0_skewers.h5 10 0.001 100.0 -v
+
+    the output file will have the name 0_fluxpowerspectrum_optdepthbin.h5
+"""
+
 import argparse
 from pathlib import Path
 
@@ -12,8 +59,8 @@ import h5py
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the skewer file name,
+        number of quantiles, and bounding optical depth. Allow for verbosity
 
     Args:
         ...
@@ -947,33 +994,35 @@ def main():
     # write data to where skewer directory resides
     outfile_fname = f"{nOutput:.0f}_fluxpowerspectrum_optdepthbin.h5"
     outfile_fPath = outdir_dirPath / Path(outfile_fname)
+    outfile_exists = outfile_fPath.is_file()
     
     if args.verbose:
         print(f'--- Saving file at : {outfile_fPath} ---')
 
-    with h5py.File(outfile_fPath, 'w') as fObj:
+    with h5py.File(outfile_fPath, 'a') as fObj:
         # place attributes
-        # start with cosmo info
-        _ = fObj.attrs.create('Omega_R', Omega_R)
-        _ = fObj.attrs.create('Omega_M', Omega_M)
-        _ = fObj.attrs.create('Omega_L', Omega_L)
-        _ = fObj.attrs.create('Omega_K', Omega_K)
-        _ = fObj.attrs.create('Omega_b', Omega_b)
-        _ = fObj.attrs.create('w0', w0)
-        _ = fObj.attrs.create('wa', wa)
-        _ = fObj.attrs.create('H0', H0)
+        if not outfile_exists:
+            # start with cosmo info
+            _ = fObj.attrs.create('Omega_R', Omega_R)
+            _ = fObj.attrs.create('Omega_M', Omega_M)
+            _ = fObj.attrs.create('Omega_L', Omega_L)
+            _ = fObj.attrs.create('Omega_K', Omega_K)
+            _ = fObj.attrs.create('Omega_b', Omega_b)
+            _ = fObj.attrs.create('w0', w0)
+            _ = fObj.attrs.create('wa', wa)
+            _ = fObj.attrs.create('H0', H0)
 
-        # sim info
-        _ = fObj.attrs.create('Lbox', Lbox)
-        _ = fObj.attrs.create('nCells', nCells)
-        _ = fObj.attrs.create('nStrides', nstrides)
-        _ = fObj.attrs.create('nSkewers', np.array([nskewers_x, nskewers_y, nskewers_z]))
+            # sim info
+            _ = fObj.attrs.create('Lbox', Lbox)
+            _ = fObj.attrs.create('nCells', nCells)
+            _ = fObj.attrs.create('nStrides', nstrides)
+            _ = fObj.attrs.create('nSkewers', np.array([nskewers_x, nskewers_y, nskewers_z]))
 
-        # output info
-        _ = fObj.attrs.create('fPath', str(skewer_fPath))
-        _ = fObj.attrs.create('redshift', redshift)
-        _ = fObj.attrs.create('scale_factor', scale_factor)
-        _ = fObj.attrs.create('nOutput', nOutput)
+            # output info
+            _ = fObj.attrs.create('fPath', str(skewer_fPath))
+            _ = fObj.attrs.create('redshift', redshift)
+            _ = fObj.attrs.create('scale_factor', scale_factor)
+            _ = fObj.attrs.create('nOutput', nOutput)
 
         # analysis info
         _ = fObj.attrs.create('tau_eff_low', args.optdepthlow)
@@ -984,6 +1033,13 @@ def main():
         _ = fObj.create_dataset('k_x', data=kvals_fft_x)
         _ = fObj.create_dataset('k_y', data=kvals_fft_y)
         _ = fObj.create_dataset('k_z', data=kvals_fft_z)
+
+        # flush old quantile groups
+        if outfile_exists:
+            for key in fObj.keys():
+                analysis_mode = key.split("_")[1]
+                if analysis_mode == "quantile":
+                    del fObj[key]
 
         # flux power spectra info
         for nquantile in range(args.nquantiles):

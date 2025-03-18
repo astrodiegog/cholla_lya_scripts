@@ -1,3 +1,17 @@
+#!/usr/bin/env python3
+"""
+This script will plot the difference of a flux power spectra created from one
+    quantile against the flux power spectra produced On-The-Fly by Cholla. The
+    script expects that only one quantile group was used to have only one
+    spectra to compare against. The script also expects the analysis file to
+    have the associated flux power spectra.
+
+Usage of plotting absolute difference:
+    $ python3 plot_powspec_diff_quantile.py 0_fluxpowerspectrum_optdepthbin.h5 0_analysis.h5 -v
+
+Usage of plotting the relative difference:
+    $ python3 plot_powspec_diff_quantile.py 0_fluxpowerspectrum_optdepthbin.h5 0_analysis.h5 -v -l
+"""
 import argparse
 from pathlib import Path
 
@@ -16,8 +30,8 @@ _ = plt.figure()
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the FPS optdepthbin file
+        and the OTF analysis file. Allow for verbosity
 
     Args:
         ...
@@ -43,9 +57,6 @@ def create_parser():
                         action='store_true')
 
     return parser
-
-
-
 
 
 

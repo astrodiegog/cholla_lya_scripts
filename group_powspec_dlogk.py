@@ -1,3 +1,19 @@
+#!/usr/bin/env python3
+"""
+This script groups flux power spectra from each x-y-z axis. This script loops
+    over every group in nOutput_fluxpowerspectrum_optdepthbin.h5 and combines
+    power spectra along each axis by making a common k-mode space that takes
+    logarithmic steps as an input. Given some differential step in logarithmic 
+    k-space dlogk, we take the largest Hubble flow along all axes in order to 
+    drive to the smallest k value. We start with the smallest k value and 
+    create a k-mode array that takes logarithmic steps like dlogk. We then loop
+    over every k_x, k_y, and k_z value to find where they land on this new 
+    k-mode array, and use it to add the flux power spectrum from some axis, 
+    while normalizing by the number of number of k values that land there.
+
+Usage for 0.002 logarithmic k-mode steps:
+    $ python3 group_powspec_dlogk.py 0_fluxpowerspectrum_optdepthbin.h5 0.002 -v
+"""
 import argparse
 from pathlib import Path
 
@@ -13,8 +29,8 @@ import h5py
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the FPS optdepthbin name.
+        Allow for verbosity
 
     Args:
         ...
@@ -36,9 +52,7 @@ def create_parser():
 
 
 ###
-# Create all data structures to fully explain power spectrum calculation
-# These data structures are pretty thorough, and not every line is readily needed
-# but I prioritize readability over less lines of code
+# Create all data structures to fully explain power spectrum grouping
 ###
 
 

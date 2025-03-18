@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+"""
+This script will follow very similarly to powspec_skewer_quantiles.py, in that
+    it will group flux power spectra with a number of quantiles and bounding
+    optical depths. The extension of this code is that it can group skewers
+    from different skewer output files. This was my original implementation
+    but it is much rougher than powspec_skewer_quantiles.py.
+
+TODO:
+    remove dlogk, and leave grouping to other scripts
+"""
 import argparse
 from pathlib import Path
 
@@ -13,8 +24,8 @@ import h5py
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the skewer directory name,
+        number of quantiles, and bounding optical depth. Allow for verbosity
 
     Args:
         ...

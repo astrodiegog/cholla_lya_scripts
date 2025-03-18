@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+"""
+This script groups flux power spectra from each x-y-z axis. This script loops
+    over every group in nOutput_fluxpowerspectrum_optdepthbin.h5 and combines
+    power spectra by finding the unique k-mode values along each axis.
+
+Usage:
+    $ python3 group_powspec_uniquek.py 0_fluxpowerspectrum_optdepthbin.h5 -v
+"""
 import argparse
 from pathlib import Path
 
@@ -13,8 +22,8 @@ import h5py
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the FPS optdepthbin name. 
+        Allow for verbosity
 
     Args:
         ...

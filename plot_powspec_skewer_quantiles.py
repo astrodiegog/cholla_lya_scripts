@@ -1,3 +1,17 @@
+#!/usr/bin/env python3
+"""
+This script will plot the distribution of flux power spectra that was placed
+    in a distribution of quantiles. All flux power spectra are shown with the
+    color of its line being representative of the mean effective optical
+    depth in that quantile.
+
+Usage of saving all individual flux power spectra grouped by unique k values:
+    $ python3 plot_powspec_skewer_quantile.py 0_fluxpowerspectrum_optdepthbin.h5 -v -a -u
+
+Usage of saving flux power spectra grouped by dlogk:
+    $ python3 plot_powspec_skewer_quantile.py 0_fluxpowerspectrum_optdepthbin.h5 -v -g
+"""
+
 import argparse
 from pathlib import Path
 
@@ -17,8 +31,8 @@ _ = plt.figure()
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the FPS optdepthbin name.
+        Allows for verbosity.
 
     Args:
         ...

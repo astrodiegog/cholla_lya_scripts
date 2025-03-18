@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+"""
+This script will plot the effective optical depth distribution as a function
+    of redshift. It will take in a skewer directory and a list of output
+    strings and make a 2D histogram.
+
+TODO:
+    figure out a cleaner way to input multiple files
+"""
 import argparse
 from pathlib import Path
 
@@ -15,8 +24,8 @@ _ = plt.figure()
 
 def create_parser():
     '''
-    Create a command line argument parser that grabs the number of nodes
-        and the parameter text file. Allow for verbosity
+    Create a command line argument parser that grabs the skewer directory
+        and the string of outputs. Allow for verbosity
 
     Args:
         ...
