@@ -1,0 +1,44 @@
+
+so you want to create a conda environment with mpi4py and h5py that is built with parallel abilities on!
+
+first load in everything you're gonna need
+```
+$ module load miniforge openmpi/4.1.5 devtoolset-9 hdf5
+```
+
+second create new conda env & activate environment
+
+```
+$ conda create -p $CONDA_PATH python=3.11.0
+$ source activate $CONDA_PATH
+```
+
+third un and re install mpi4py
+
+```
+$ python3 -m pip uninstall mpi4py
+$ pip uninstall mpi4py
+$ export MPICC="mpicc -shared"
+$ python3 -m pip install --no-cache-dir --no-binary=mpi4py mpi4py
+```
+
+fourthly locate the HDF5 directory you want to use. for me on lux this was (found with `module avail`)
+
+```
+$ export HDF5_DIR=/cm/shared/apps/hdf5/1.14.4-parallel/
+```
+
+fifthly un and re install h5py
+
+```
+$ python3 -m pip uninstall h5py
+$ pip uninstall h5py
+$ export HDF5_MPI="ON" 
+$ export CC=mpicc 
+$ python3 -m pip install --no-cache-dir --no-binary=h5py h5py
+```
+
+shoutout:
+    https://docs.olcf.ornl.gov/software/python/parallel_h5py.html
+    https://docs.olcf.ornl.gov/software/python/conda_basics.html
+

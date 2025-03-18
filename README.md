@@ -6,15 +6,6 @@ Python scripts to study the Lyman-alpha Forest in cosmological Cholla simulation
 
 We would like to study the optical depth and transmitted flux power spectrum in a cosmological Cholla simulation from On-The-Fly Skewer files.
 
-What is the expected contents in the On-The-Fly Skewer File? 3 datasets for each of `skewers_x`, `skewers_y`, and `skewers_z` groups:
-
-1. ``HI_density`` - ionized Hydrogen in comoving density units of $h^2 \textrm{M}\_{\odot} \textrm{kpc}^3$ 
-2. ``los_velocity`` - line-of-sight peculiar velocity along a skewer in units of $\textrm{km} \textrm{s}^{-1}$ 
-3. ``temperature`` - temperature in units of $\textrm{K}$ 
-
-Each dataset is expected to be in shape of the number of skewers and line-of-sight cells $(n\_{\textrm{skewers}}, n\_{\textrm{LOS}})$.
-
-10 attributes are also expected:
 
 1. ``Lbox`` - array of 3 floats, detailing length of simulated box in each dimension in units of $\textrm{kpc}$
 2. ``Omega_R`` - Present-Day Radiation Energy Density
@@ -28,9 +19,76 @@ Each dataset is expected to be in shape of the number of skewers and line-of-sig
 Most scripts have been written with the python package [argparse](https://docs.python.org/3/howto/argparse.html) which allows for a quick command line interface.
 
 
-# Power Spectrum Binning
+# Optical Depth Calculation
 
-## Motivation
+We assume a Gaussian line profile. To calculate the optical depth, we run
+
+```
+$ python3 optdepth.py $SKEWERFILE -v -l
+```
+
+where 
+
+``$SKEWERFILE`` is the one positional argument - the skewer output file
+``-v`` flags the script to be verbose throughout the calculation
+``-l`` flags the script to save the local optical depth
+
+To only save the median optical depth, and not the local optical depth, do not include the ``-l`` flag.
+
+The Python package [mpi4py](https://mpi4py.readthedocs.io) provides Python bindings for the message passing interface (MPI) standard which is common in many parallelized codes, including Cholla itself. Instead of using Python, we could write this calculation in C itself, but one step at a time bro chilllllll. From serially looping over each skewer individually,
+
+```python
+for nSkewerID in range(nSkewers):
+    ...
+    tau_local[nSkewerID] = tau
+```
+
+we assign specific skewer IDs for each processor
+
+```python
+rank = MPI.COMM_WORLD.Get_rank()
+size = MPI.COMM_WORLD.Get_size()
+
+skewerID_arr = np.arange(nSkewers)
+skewerIDs_rank = np.arghwere((skewerID_arr % size) == rank).flatten()
+
+for nSkewerID in skewerID_rank:
+    ...
+    tau_local[nSkewerID] = tau
+```
+
+If we have 10 skewers and 4 processors, we have the following ranks responsible for following skewer IDs
+
+1. rank 0 - [0,4,8]
+2. rank 1 - [1,5,9]
+3. rank 2 - [2,6]
+4. rank 3 - [3,7]
+
+This is all great and good and amazing, but there is the issue of actually grabbing the data. To open and write data onto the skewer HDF5 files, we use the Python package [h5py](http://docs.h5py.org) which provides a Pythonic interface for HDF5 format files. Luckily, the developers for h5py have provided detailed instructions on building h5py that utilizes Parallel HDF5 [here](https://docs.h5py.org/en/stable/mpi.html).
+
+Details on how we accomplished this on [lux](https://lux-ucsc.readthedocs.io) is found in the file `create_h5pympi.txt`.
+
+
+The default optical depth script works as usual, where the local optical depth is already saved in this repo
+
+```bash
+$ python3 optdepth.py $SKEWERFILE -v
+```
+
+The `-v` flag tells the script to be verbose and pring helpful info, while `$SKEWERFILE` is the HDF5 skewer output file.
+
+On the other hand, the new script runs with your favorite MPI standard
+
+```bash
+$ mpirun -np $NUMNODES python3 $SKEWERFILE -v
+```
+
+where the `-np` flag specifies the number of processors to use in the calculation, specified here with `$NUMNODES`.
+
+
+
+
+# Power Spectrum Binning
 
 We would like to study cosmological simulations that have different expansion histories. A good probe for this will be to individually cosmological boxes using skewers that probe optically thick regions compared against skewers that probe the optically thin regime.
 
@@ -174,6 +232,8 @@ Test these scripts with a non-cube cosmological simulation
 `powspec_OLD.py` is my first implementation of `powspec_skewer_quantiles.py` which was initially for multiple number of skewer files. It does work, but the code isn't as clean. In the future, I would like to somehow be able to bin by number of quantiles for multiple skewer files
 
 `plot_efftauinfo_OLD.py` is a plotting script that shows the distribution of effective optical depth as a function of redshift. Again, this is good, but would like to reimplement in the future after I figure out how to tile with more than one skewer file
+
+
 
 
 
