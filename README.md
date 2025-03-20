@@ -6,6 +6,7 @@ Python scripts to study the Lyman-alpha Forest in cosmological Cholla simulation
 
 We would like to study the optical depth and transmitted flux power spectrum in a cosmological Cholla simulation from On-The-Fly Skewer files.
 
+We expect the following attributes in each Skewer file.
 
 1. ``Lbox`` - array of 3 floats, detailing length of simulated box in each dimension in units of $\textrm{kpc}$
 2. ``Omega_R`` - Present-Day Radiation Energy Density
@@ -23,19 +24,19 @@ Most scripts have been written with the python package [argparse](https://docs.p
 
 We assume a Gaussian line profile. To calculate the optical depth, we run
 
-```
+```bash
 $ python3 optdepth.py $SKEWERFILE -v -l
 ```
 
 where 
 
-``$SKEWERFILE`` is the one positional argument - the skewer output file
-``-v`` flags the script to be verbose throughout the calculation
-``-l`` flags the script to save the local optical depth
+1. ``$SKEWERFILE`` is the one positional argument - the skewer output file
+2. ``-v`` flags the script to be verbose throughout the calculation
+3. ``-l`` flags the script to save the local optical depth
 
 To only save the median optical depth, and not the local optical depth, do not include the ``-l`` flag.
 
-The Python package [mpi4py](https://mpi4py.readthedocs.io) provides Python bindings for the message passing interface (MPI) standard which is common in many parallelized codes, including Cholla itself. Instead of using Python, we could write this calculation in C itself, but one step at a time bro chilllllll. From serially looping over each skewer individually,
+In practice, ``optdepth.py`` scales very poorly for larger simulation boxes, so we seek someway to hasten the calculation. The Python package [mpi4py](https://mpi4py.readthedocs.io) provides Python bindings for the message passing interface (MPI) standard which is common in many parallelized codes, including Cholla itself. Instead of using Python, we could write this calculation in C itself, but one step at a time bro chilllllll. From serially looping over each skewer individually in ``optdepth.py``,
 
 ```python
 for nSkewerID in range(nSkewers):
@@ -43,7 +44,7 @@ for nSkewerID in range(nSkewers):
     tau_local[nSkewerID] = tau
 ```
 
-we assign specific skewer IDs for each processor
+we instead assign specific skewer IDs for each processor
 
 ```python
 rank = MPI.COMM_WORLD.Get_rank()
@@ -68,19 +69,10 @@ This is all great and good and amazing, but there is the issue of actually grabb
 
 Details on how we accomplished this on [lux](https://lux-ucsc.readthedocs.io) is found in the file `create_h5pympi.txt`.
 
-
-The default optical depth script works as usual, where the local optical depth is already saved in this repo
-
-```bash
-$ python3 optdepth.py $SKEWERFILE -v
-```
-
-The `-v` flag tells the script to be verbose and pring helpful info, while `$SKEWERFILE` is the HDF5 skewer output file.
-
-On the other hand, the new script runs with your favorite MPI standard
+The parallelized script runs with your favorite MPI standard
 
 ```bash
-$ mpirun -np $NUMNODES python3 $SKEWERFILE -v
+$ mpirun -np $NUMNODES python3 optdepth_mpi.py $SKEWERFILE -v
 ```
 
 where the `-np` flag specifies the number of processors to use in the calculation, specified here with `$NUMNODES`.
@@ -90,13 +82,13 @@ where the `-np` flag specifies the number of processors to use in the calculatio
 
 # Power Spectrum Binning
 
-We would like to study cosmological simulations that have different expansion histories. A good probe for this will be to individually cosmological boxes using skewers that probe optically thick regions compared against skewers that probe the optically thin regime.
+We would like to study cosmological simulations that have different expansion histories. A good probe for this will be to individually probe optically thick regions compared against skewers that probe the optically thin regime.
 
-We don't want to arbitrarily choose some optical depth that serves as the barrier between optically thin and thick, so instead we place skewers in bins of effective optical depth, and take the flux power spectrum for each seperately. Unaware of any specific optical depth to take seriously, instead of placing strict limits, we first allow for a range of optical depth and some number of quantiles to split these effectice optical depths into. After using the (slightly dated) `optdepth.py` file to calculate the optical depth, we can then bin and take the flux power spectra.
+We don't want to arbitrarily choose some optical depth that serves as the barrier between optically thin and thick, so instead we place skewers in bins of effective optical depth, and take the flux power spectrum for each seperately. Unaware of any specific optical depth to take seriously, instead of placing strict limits, we first allow for a range of optical depth and some number of quantiles to split these effectice optical depths into. After calculating the optical depth, we can then bin skewers and take the stacked flux power spectra.
 
 ## Quantile Binning
 
-The structure to run this code is
+The structure to group skewers by optical depth using some number of quantiles is
 
 ```bash
 $ python3 powspec_skewer_quantiles.py $SKEWERFILE $NQUANTILE $OPTDEPTHLOW $OPTDEPTHUPP -v
@@ -109,7 +101,7 @@ As can be deduced from the variables names, the arguments for the python script 
 3. `$OPTDEPTHLOW` - lower effective optical depth range for most optically thin regime
 4. `$OPTDEPTHUPP` - upper effective optical depth range for most optically thick regime
 
-The `-v` flag tells the script to be verbose thorughout the calculation. We expect the skewer file to have the forma `nOutput_skewers.h5` where `nOutput` is the output number from the Cholla outputs. From this Python script, we produce an HDF5 file `nOutput_fluxpowerspectrum_optdepthbin.h5` placed in the parent directory of the directory the skewer file resides in. This file has the general structure
+The `-v` flag tells the script to be verbose thorughout the calculation. We expect the skewer file to have the format `nOutput_skewers.h5` where `nOutput` is the output number from the Cholla outputs. From this Python script, we produce an HDF5 file `nOutput_fluxpowerspectrum_optdepthbin.h5` placed in the parent directory of the directory the skewer file resides in. This file has the general structure
 
 ```bash
 nOutput_fluxpowerspectrum_optdepthbin.h5
@@ -155,10 +147,13 @@ The attributes attached to the root group `nOutput_fluxpowerspectrum_optdepthbin
 14. ``tau_eff_low`` and ``tau_eff_upp`` - input arguments detailing the upper and lower effective optical depth to use in tiling
 15. ``tau_eff_mean`` - mean of all effective optical depth
 16. ``nquantiles`` - input argument detailing the number of quantiels to use in tiling
-17. ``k_x``, ``k_y``, and ``k_z`` - arrays of size `1. + (nCells / 2.)` that hold the k-mode values in each dimension in units of $\textrm{s}\ \textrm{km}^{-1}$
+
+The datasets attached to the root group are the following
+
+1. ``k_x``, ``k_y``, and ``k_z`` - arrays of size `1. + (nCells / 2.)` that hold the k-mode values in each dimension in units of $\textrm{s}\ \textrm{km}^{-1}$
 
 
-The attribuets attached to each quantile group ``FluxPowerSpectrum_quantile_0`` give details on this quantile region. The following avalues are attached in this attribute
+The attributes attached to each quantile group ``FluxPowerSpectrum_quantile_0`` give details on this quantile region. The following values are attached in this attribute
 
 1. ``tau_min`` and ``tau_max`` - minimum and maximum effective optical depth defining this quantile
 2. ``tau_mean`` - mean of the effective optical depths landing in this quantile
@@ -168,7 +163,7 @@ The datasets inside each quantile group are mostly straigthforward
 1. ``indices`` - the indices of the skewers that land in this quantile. 
 2. ``FPS_X``, ``FPS_Y``, and ``FPS_Z`` - the flux power spectrum in each dimension.
 
-What is the `indices` dataset in detail? Well in organizing the skewers, we use its index in the local optical depth dataset (saved in the shape of (`nSkewers`, `nLOS`) for some axis) as an ID for this skewer. This array holds those ID values. If we take all skewers independent of axis when axis, then how do we distinguish between axis in ``indices``? These values will run from zero to the total number of skewers summed along all axes, so we just choose to have indices `(0, nCells[0])` correspond to skewer IDs along the x-axis, `(nCells[0], nCells[1])` to skewer IDs along the y-axis, and `(nCells[0] + nCells[1], )` to skewer IDs along the z-axis.
+What is the `indices` dataset in detail? Well in organizing the skewers, we use its index in the local optical depth dataset (saved in the shape of (`nSkewers`, `nLOS`) for some axis) as an ID for this skewer. This array holds those ID values. If we take all skewers independent of axis when sorting, then how do we distinguish between axis in ``indices``? These values will run from zero to the total number of skewers summed along all axes, so we just choose to have indices `(0, nCells[0])` correspond to skewer IDs along the x-axis, `(nCells[0], nCells[1])` to skewer IDs along the y-axis, and `(nCells[0] + nCells[1], )` to skewer IDs along the z-axis.
 
 We have as many ``FluxPowerSpectrum_quantile`` groups as specified by the input `$NQUANTILE` argument into `powspec_skewer_quantiles.py`.
 
@@ -225,13 +220,12 @@ where `$FPSOPTDEPTHBIN` is the output file from `powspec_skewer_quantiles.py`, `
 
 ## TODO
 
-The quantile method is an effective way to get a good first look at the distribution of the transmitted flux power spectrum using skewers of different effective optical depth, but makes it difficult to test with different expansion histories because the effective optical depths at boundaries aren't set. My next immediate steps will be to make a script that will do the grouping assuming one quantile and just using one effective optical depth range.
+The quantile method is an effective way to get a good first look at the distribution of the transmitted flux power spectrum using skewers of different effective optical depth, but makes it difficult to test with different expansion histories because the effective optical depths at boundaries aren't set. My next immediate steps will be to make a script that will do the grouping assuming one quantile and just using one effective optical depth range. These would be appended on top of each other to have many ranges.
 
-Test these scripts with a non-cube cosmological simulation
+Test these scripts with a non-cube cosmological simulation.
 
-`powspec_OLD.py` is my first implementation of `powspec_skewer_quantiles.py` which was initially for multiple number of skewer files. It does work, but the code isn't as clean. In the future, I would like to somehow be able to bin by number of quantiles for multiple skewer files
+In the future, I would like to somehow be able to bin by number of quantiles for multiple skewer files. I would also like to change how I show more than one skewer file on `plot_skewerdir_efftau.py`
 
-`plot_efftauinfo_OLD.py` is a plotting script that shows the distribution of effective optical depth as a function of redshift. Again, this is good, but would like to reimplement in the future after I figure out how to tile with more than one skewer file
 
 
 

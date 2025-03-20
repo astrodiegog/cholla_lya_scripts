@@ -2,6 +2,7 @@
 so you want to create a conda environment with mpi4py and h5py that is built with parallel abilities on!
 
 first load in everything you're gonna need
+
 ```
 $ module load miniforge openmpi/4.1.5 devtoolset-9 hdf5
 ```
