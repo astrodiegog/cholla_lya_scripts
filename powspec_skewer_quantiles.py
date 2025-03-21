@@ -1024,15 +1024,17 @@ def main():
             _ = fObj.attrs.create('scale_factor', scale_factor)
             _ = fObj.attrs.create('nOutput', nOutput)
 
-        # analysis info
-        _ = fObj.attrs.create('tau_eff_low', args.optdepthlow)
-        _ = fObj.attrs.create('tau_eff_upp', args.optdepthupp)
+            # general analysis info
+            _ = fObj.create_dataset('k_x', data=kvals_fft_x)
+            _ = fObj.create_dataset('k_y', data=kvals_fft_y)
+            _ = fObj.create_dataset('k_z', data=kvals_fft_z)
+
+        # quantile analysis info
+        _ = fObj.attrs.create('tau_eff_low_quantiles', args.optdepthlow)
+        _ = fObj.attrs.create('tau_eff_upp_quantiles', args.optdepthupp)
         _ = fObj.attrs.create('tau_eff_mean', tau_eff_all_mean)
         _ = fObj.attrs.create('tau_eff_bruno', tau_eff_bruno)
         _ = fObj.attrs.create('nquantiles', args.nquantiles)
-        _ = fObj.create_dataset('k_x', data=kvals_fft_x)
-        _ = fObj.create_dataset('k_y', data=kvals_fft_y)
-        _ = fObj.create_dataset('k_z', data=kvals_fft_z)
 
         # flush old quantile groups
         if outfile_exists:
