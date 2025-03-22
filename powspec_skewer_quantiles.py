@@ -887,7 +887,7 @@ def main():
         nCells_x = int(nskewers_x * nCells[0])
         nCells_y = int(nskewers_y * nCells[1])
         nCells_z = int(nskewers_z * nCells[2])
-        tau_local_all = np.zeros(tau_local_all, dtype=precision)
+        tau_local_all = np.zeros(nCells_x + nCells_y + nCells_z, dtype=precision)
         tau_local_all[ : (nCells_x) ] = tau_local_x.flatten()
         tau_local_all[ (nCells_x) : (nCells_x + nCells_y)] = tau_local_y.flatten()
         tau_local_all[ (nCells_x + nCells_y) : ] = tau_local_z.flatten()
