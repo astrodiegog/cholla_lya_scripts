@@ -884,9 +884,9 @@ def main():
 
     if not outfile_exists:
         # group local optical depths
-        nCells_x = int(nskews_x * nCells[0])
-        nCells_y = int(nskews_y * nCells[1])
-        nCells_z = int(nskews_z * nCells[2])
+        nCells_x = int(nskewers_x * nCells[0])
+        nCells_y = int(nskewers_y * nCells[1])
+        nCells_z = int(nskewers_z * nCells[2])
         tau_local_all = np.zeros(tau_local_all, dtype=precision)
         tau_local_all[ : (nCells_x) ] = tau_local_x.flatten()
         tau_local_all[ (nCells_x) : (nCells_x + nCells_y)] = tau_local_y.flatten()
