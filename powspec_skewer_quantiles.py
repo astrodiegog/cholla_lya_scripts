@@ -753,7 +753,7 @@ def main():
     tau_eff_all[ (nskewers_x) : (nskewers_x + nskewers_y)] = tau_eff_y
     tau_eff_all[ (nskewers_x + nskewers_y) : ] = tau_eff_z
     if not outfile_exists:
-        tau_eff_all_mean = np.mean(tau_eff_all)
+        mean_tau_eff_all = np.mean(tau_eff_all)
 
     # create a mask of all effective optical depths within our range
     tau_eff_all_inbounds_mask = (tau_eff_all > args.optdepthlow) & (tau_eff_all < args.optdepthupp)
@@ -888,7 +888,7 @@ def main():
         tau_local_all[ : (nCells_x) ] = tau_local_x.flatten()
         tau_local_all[ (nCells_x) : (nCells_x + nCells_y)] = tau_local_y.flatten()
         tau_local_all[ (nCells_x + nCells_y) : ] = tau_local_z.flatten()
-        tau_local_all_mean = np.mean(tau_local_all)
+        mean_tau_local_all = np.mean(tau_local_all)
 
         # calculate fluxes and their means
         fluxes_local_all = np.exp(- tau_local_all)
@@ -1071,8 +1071,8 @@ def main():
             _ = fObj.create_dataset('k_z', data=kvals_fft_z)
             _ = fObj.attrs.create('nranges', 0)
             _ = fObj.attrs.create('nquantiles', 0)
-            _ = fObj.attrs.create('tau_local_mean', tau_local_all_mean)
-            _ = fObj.attrs.create('tau_eff_mean', tau_eff_all_mean)
+            _ = fObj.attrs.create('tau_local_mean', mean_tau_local_all)
+            _ = fObj.attrs.create('tau_eff_mean', mean_tau_eff_all)
             _ = fObj.attrs.create('meanF_local', meanF_local_all)
             _ = fObj.attrs.create('meanF_eff', meanF_eff_all)
             _ = fObj.attrs.create('tau_meanF_local', tau_meanF_local)
