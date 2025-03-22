@@ -1127,7 +1127,7 @@ def main():
             tau_local_currQuantile_mean = mean_tau_local_quantiles[quantile_key]
 
             # grab mean effective and local fluxes
-            meanF_local_currQuantile = meanF_local_quantiles,[quantile_key]
+            meanF_local_currQuantile = meanF_local_quantiles[quantile_key]
             meanF_eff_currQuantile = meanF_eff_quantiles[quantile_key]
 
             # grab optical depth from mean fluxes
