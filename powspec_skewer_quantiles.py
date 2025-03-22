@@ -798,7 +798,7 @@ def main():
         curr_str = f'--- Distribution of skewers in nOutput {nOutput} / scale factor: '
         curr_str += f'{scale_factor:.4f} / redshift: {redshift:.4f} --- '
         print(curr_str)
-        print(f'--- | nquantile | tau_min | tau_max | Mean Flux | x_skewers | y_skewers | z_skewers | ---')
+        print(f'--- | nquantile | tau_min | tau_max | Mean (tau_eff) | Mean(tau_local) | tau_meanF_eff | tau_meanF_local | x_skewers | y_skewers | z_skewers | ---')
 
     # save the local optical depths
     tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
@@ -867,13 +867,16 @@ def main():
 
         # calculate effective optical depth wrt mean flux values
         tau_meanF_local_quantiles[quantile_key] = -np.log(meanF_local_quantiles[quantile_key])
-        tau_meanF_eff_quantiles[quantile_key] = -np.log(meanF_eff_quantile[quantile_key])
+        tau_meanF_eff_quantiles[quantile_key] = -np.log(meanF_eff_quantiles[quantile_key])
 
         if args.verbose:
             curr_str = f"--- | {nquantile:.0f} | "
             curr_str += f"{tau_eff_all[indx_currQuantile[0]]:.4e} | "
             curr_str += f"{tau_eff_all[indx_currQuantile[-1]]:.4e} | "
-            curr_str += f"{meanF_all_quantiles[quantile_key]:.4e} | "
+            curr_str += f"{mean_tau_eff_quantiles[quantile_key]:.4e} | "
+            curr_str += f"{mean_tau_local_quantiles[quantile_key]:.4e} | "
+            curr_str += f"{tau_meanF_eff_quantiles[quantile_key]:.4e} | "
+            curr_str += f"{tau_meanF_local_quantiles[quantile_key]:.4e} | "
             curr_str += f"{100 * nskews_x_currQuantile / nskewers_tot:.4f} % | "
             curr_str += f"{100 * nskews_y_currQuantile / nskewers_tot:.4f} % | "
             curr_str += f"{100 * nskews_z_currQuantile / nskewers_tot:.4f} % | --- "
@@ -941,13 +944,34 @@ def main():
         tau_local_outQuantiles[ (nCells_x_outQuantiles) : (nCells_x_outQuantiles + nCells_y_outQuantiles) ] = tau_local_y_outQuantiles
         tau_local_outQuantiles[ (nCells_x_outQuantiles + nCells_y_outQuantiles) : ] = tau_local_z_outQuantiles
 
+        # calculate mean effective and local optical depths falling in quantile
+        mean_tau_local_outQuantiles = np.mean(tau_local_outQuantiles)
+        tau_eff_outQuantiles = tau_eff_all[indx_outQuantile]
+        mean_tau_eff_Quantiles = np.mean(tau_eff_outQuantiles)
+
+        # calculate fluxes and the mean
+        fluxes_local_outQuantiles = np.exp(- tau_local_outQuantiles)
+        meanF_local_outQuantiles = np.mean(fluxes_local_outQuantiles)
+        fluxes_eff_outQuantiles = np.exp(- tau_eff_outQuantiles)
+        meanF_eff_outQuantiles = np.mean(fluxes_eff_outQuantiles)
+
+        # calculate effective optical depth wrt mean flux values
+        tau_meanF_local = -np.log(meanF_local_outQuantiles)
+        tau_meanF_eff = -np.log(meanF_eff_outQuantiles)
+
+
         # calculate flux
         fluxes_local_currQuantile = np.exp(- tau_local_currQuantile)
 
         curr_str = f"--- | out | "
-        curr_str += f"{tau_eff_all[indx_currQuantile[0]]:.4e} | "
-        curr_str += f"{tau_eff_all[indx_currQuantile[-1]]:.4e} | "
-        curr_str += f"{fluxes_local_currQuantile:.4e} | "
+        curr_str += f"{tau_eff_all[indx_outQuantiles[0]]:.4e} | "
+        curr_str += f"{tau_eff_all[indx_outQuantiles[-1]]:.4e} | "
+
+        curr_str += f"{mean_tau_eff_outQuantiles:.4e} | "
+        curr_str += f"{mean_tau_local_outQuantiles:.4e} | "
+        curr_str += f"{tau_meanF_eff_outQuantiles:.4e} | "
+        curr_str += f"{tau_meanF_local_outQuantiles:.4e} | "
+
         curr_str += f"{100 * nskews_x_outQuantile / nskewers_tot:.4f} % | "
         curr_str += f"{100 * nskews_y_outQuantile / nskewers_tot:.4f} % | "
         curr_str += f"{100 * nskews_z_outQuantile / nskewers_tot:.4f} % | --- "
