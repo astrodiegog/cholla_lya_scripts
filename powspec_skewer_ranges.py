@@ -648,6 +648,23 @@ def main():
     if args.verbose:
         print(f"--- Placing output files in : {outdir_dirPath} ---")
 
+    # get analysis file name
+    outfile_fname = f"{nOutput:.0f}_fluxpowerspectrum_optdepthbin.h5"
+    outfile_fPath = outdir_dirPath / Path(outfile_fname)
+    outfile_exists = outfile_fPath.is_file()
+
+    if args.verbose:
+        print(f'--- Saving file at : {outfile_fPath} ---')
+        if outfile_exists:
+            print(f'--- File already exists, no need for global calculations ---')
+        else:
+            print(f'--- File does not exist, performing following global calculations: ')
+            calc_string = f'--- Mean effective optical depth ---'
+            calc_string += f'--- Mean local optical depth ---'
+            calc_string += f'--- Mean effective flux + Mean effective flux optical depth ---'
+            calc_string += f'--- Mean local flux + Mean local flux optical depth ---'
+            print(calc_string)
+
 
     # ensure limits are reasonable
     assert args.optdepthlow >= 0
@@ -730,7 +747,8 @@ def main():
     tau_eff_all[ : (nskewers_x)] = tau_eff_x
     tau_eff_all[ (nskewers_x) : (nskewers_x + nskewers_y)] = tau_eff_y
     tau_eff_all[ (nskewers_x + nskewers_y) : ] = tau_eff_z
-    tau_eff_all_mean = np.mean(tau_eff_all)
+    if not outfile_exists:
+        tau_eff_all_mean = np.mean(tau_eff_all)
 
     # create a mask of all effective optical depths within our range
     tau_eff_all_inbounds_mask = (tau_eff_all > args.optdepthlow) & (tau_eff_all < args.optdepthupp)
@@ -769,6 +787,17 @@ def main():
     tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
     tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
 
+    if not outfile_exists:
+        # group local optical depths
+        nCells_x = int(nskews_x * nCells[0])
+        nCells_y = int(nskews_y * nCells[1])
+        nCells_z = int(nskews_z * nCells[2])
+        tau_local_all = np.zeros(tau_local_all, dtype=precision)
+        tau_local_all[ : (nCells_x) ] = tau_local_x.flatten()
+        tau_local_all[ (nCells_x) : (nCells_x + nCells_y)] = tau_local_y.flatten()
+        tau_local_all[ (nCells_x + nCells_y) : ] = tau_local_z.flatten()
+        tau_local_all_mean = np.mean(tau_local_all)
+
     # create an array for all local optical depths along an axis
     tau_local_x_inbounds = tau_local_x[skewid_x_inbounds].flatten()
     tau_local_y_inbounds = tau_local_y[skewid_y_inbounds].flatten()
@@ -789,18 +818,25 @@ def main():
     # calculate fluxes and the mean
     fluxes_local_inbounds = np.exp(- tau_local_inbounds)
     fluxes_eff_inbounds = np.exp(- tau_eff_all[tau_eff_all_inbounds_mask])
-    
     meanF_local_inbounds = np.mean(fluxes_local_inbounds)
     meanF_eff_inbounds = np.mean(fluxes_eff_inbounds)
+    if not outfile_exists:
+        fluxes_local_all = np.exp(- tau_local_all)
+        fluxes_eff_all = np.exp(- tau_eff_all)
+        meanF_local_all = np.mean(fluxes_local_all)
+        meanF_eff_all = np.mean(fluxes_eff_all)
 
-    tau_eff_bruno_inbounds = -np.log(meanF_all_inbounds)
-    tau_eff_all_inbounds = -np.log(meanF_eff_inbounds)
+    # calculate effective optical depth wrt mean flux values
+    tau_meanF_local_inbounds = -np.log(meanF_all_inbounds)
+    tau_meanF_eff_inbounds = -np.log(meanF_eff_inbounds)
+    if not outfile_exists:
+        tau_meanF_local = -np.log(meanF_local_all)
+        tau_meanF_eff = -np.log(meanF_eff_all)
 
     if args.verbose:
-        curr_str = f"--- Mean local flux : {meanF_local_inbounds:.4e}  / tau : {tau_eff_bruno_inbounds:.4e} ---"
-        curr_str = f"--- Mean effective flux : {meanF_eff_inbounds:.4e} / tau : {tau_eff_all_inbounds:.4e} ---"
+        curr_str = f'--- Mean local flux (inbounds) : {meanF_local_inbounds:.4e} / tau : {teau_meanF_local_inbounds:.4e} ---'
+        curr_str = f'--- Mean effective flux (inbounds) : {meanF_eff_inbounds:.4e} / tau : {teau_meanF_eff_inbounds:.4e} ---'
         print(curr_str)
-
 
     # find the index of the skewers that do not fall within the input range & print its info
     indx_all_outbounds = np.argwhere(~tau_eff_all_inbounds_mask).flatten()
@@ -822,54 +858,46 @@ def main():
     dvHubble_z = chSnapCosmoHead.dvHubble(OTFSkewers.dz)
 
     # initialize flux power spectrum
-    FPS = {}
-    FPS['FPS_x'] = np.zeros(nFFTs[0], dtype=precision)
-    FPS['FPS_y'] = np.zeros(nFFTs[1], dtype=precision)
-    FPS['FPS_z'] = np.zeros(nFFTs[2], dtype=precision)
+    FPS_x = np.zeros(nFFTs[0], dtype=precision)
+    FPS_y = np.zeros(nFFTs[1], dtype=precision)
+    FPS_z = np.zeros(nFFTs[2], dtype=precision)
 
     # create Flux Power Spectrum object
     FPSHead_x = ChollaFluxPowerSpectrumHead(nCells[0], dvHubble_x)
     FPSHead_y = ChollaFluxPowerSpectrumHead(nCells[1], dvHubble_y)
     FPSHead_z = ChollaFluxPowerSpectrumHead(nCells[2], dvHubble_z)
 
-    # calculate kmodes
-    kvals_fft_x = FPSHead_x.get_kvals_fft(dtype=precision)
-    kvals_fft_y = FPSHead_y.get_kvals_fft(dtype=precision)
-    kvals_fft_z = FPSHead_z.get_kvals_fft(dtype=precision)
+    if not outfile_exists:
+        # calculate kmodes
+        kvals_fft_x = FPSHead_x.get_kvals_fft(dtype=precision)
+        kvals_fft_y = FPSHead_y.get_kvals_fft(dtype=precision)
+        kvals_fft_z = FPSHead_z.get_kvals_fft(dtype=precision)
 
     if args.verbose:
         print("--- Found k-modes along each axis, now moving on to actually performing flux power spectrum calculation in each quantile ---")
 
 
     if nskews_x_inbounds:
-        _, FPS_x = FPSHead_x.get_FPS(tau_local_x_inbounds,
-                                     flux_mean_global=meanF_local_inbounds, 
-                                     precision=precision)
-        FPS['FPS_x'] += FPS_x
+        _, calc_FPS_x = FPSHead_x.get_FPS(tau_local_x_inbounds,
+                                          flux_mean_global=meanF_local_inbounds, 
+                                          precision=precision)
+        FPS_x += calc_FPS_x
 
     if nskews_y_inbounds:
-        _, FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
-                                     flux_mean_global=meanF_local_inbounds,
-                                     precision=precision)
-        FPS['FPS_y'] += FPS_y
+        _, calc_FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
+                                          flux_mean_global=meanF_local_inbounds,
+                                          precision=precision)
+        FPS_y += calc_FPS_y
 
     if nskews_z_inbounds:    
-        _, FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
-                                     flux_mean_global=meanF_local_inbounds,
-                                     precision=precision)
-        FPS[f'FPS_z'] += FPS_z
+        _, calc_FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
+                                          flux_mean_global=meanF_local_inbounds,
+                                          precision=precision)
+        FPS_z += calc_FPS_z
 
     
     if args.verbose:
         print(f"--- Flux power spectrum calculation completed along each axis ! Now saving data ---")
-
-    # get analysis file name
-    outfile_fname = f"{nOutput:.0f}_fluxpowerspectrum_optdepthbin.h5"
-    outfile_fPath = outdir_dirPath / Path(outfile_fname)
-    outfile_exists = outfile_fPath.is_file()
-    
-    if args.verbose:
-        print(f'--- Saving file at : {outfile_fPath} ---')
 
     with h5py.File(outfile_fPath, 'a') as fObj:
         # place attributes
@@ -896,45 +924,40 @@ def main():
             _ = fObj.attrs.create('scale_factor', scale_factor)
             _ = fObj.attrs.create('nOutput', nOutput)
 
-        # analysis info
-        _ = fObj.attrs.create('tau_eff_low', args.optdepthlow)
-        _ = fObj.attrs.create('tau_eff_upp', args.optdepthupp)
-        _ = fObj.attrs.create('tau_eff_mean', tau_eff_all_mean)
-        _ = fObj.attrs.create('tau_eff_bruno', tau_eff_bruno)
-        _ = fObj.attrs.create('nquantiles', args.nquantiles)
-        _ = fObj.create_dataset('k_x', data=kvals_fft_x)
-        _ = fObj.create_dataset('k_y', data=kvals_fft_y)
-        _ = fObj.create_dataset('k_z', data=kvals_fft_z)
+            # analysis info
+            _ = fObj.create_dataset('k_x', data=kvals_fft_x)
+            _ = fObj.create_dataset('k_y', data=kvals_fft_y)
+            _ = fObj.create_dataset('k_z', data=kvals_fft_z)
+            _ = fObj.attrs.create('nranges', 0)
+            _ = fObj.attrs.create('nquantiles', 0)
+            _ = fObj.attrs.create('tau_local_mean', tau_local_all_mean)
+            _ = fObj.attrs.create('tau_eff_mean', tau_eff_all_mean)
+            _ = fObj.attrs.create('meanF_local', meanF_local_all)
+            _ = fObj.attrs.create('meanF_eff', meanF_eff_all)
+            _ = fObj.attrs.create('tau_meanF_local', tau_meanF_local)
+            _ = fObj.attrs.create('tau_meanF_eff', tau_meanF_eff)
 
+        curr_nranges = fObj.attrs['nranges'].item()
+        range_key = f'range_{curr_nranges:.0f}'
+        range_group = fObj.create_group(range_key)
+        
+        _ = range_group.attrs.create('tau_min', args.optdepthlow)
+        _ = range_group.attrs.create('tau_max', args.optdepthupp)
+        _ = range_group.attrs.create('tau_mean', np.mean(tau_eff_all[tau_eff_all_inbounds_mask]))
 
-        # flux power spectra info
-        for nquantile in range(args.nquantiles):
-            quantile_key = f'quantile_{nquantile:.0f}'
-            indx_currQuantile = indices_all_quantiles[quantile_key]
-            FPS_currQuantile = FPS_quantiles[quantile_key]
+        _ = range_group.attrs.create('meanF_local_inrange', meanF_local_inbounds)
+        _ = range_group.attrs.create('meanF_eff_inrange', meanF_eff_inbounds)
 
-            # grab flux power spectra
-            FPS_x = FPS_currQuantile['FPS_x']
-            FPS_y = FPS_currQuantile['FPS_y']
-            FPS_z = FPS_currQuantile['FPS_z']
+        _ = range_group.attrs.create('tau_meanF_local_inrange', tau_meanF_local_inbounds)
+        _ = range_group.attrs.create('tau_meanF_eff_inrange', tau_meanF_eff_inbounds)
 
-            # grab upper, lower, and mean effective optical depths
-            tau_eff_currQuantile_min = tau_eff_all[indx_currQuantile[0]]
-            tau_eff_currQuantile_max = tau_eff_all[indx_currQuantile[-1]]
-            tau_eff_currQuantile_mean = np.mean(tau_eff_all[indx_currQuantile])
+        _ = range_group.create_dataset('indices', data=indx_all_inbounds)
+        _ = range_group.create_dataset('FPS_x', data=FPS_x)
+        _ = range_group.create_dataset('FPS_y', data=FPS_y)
+        _ = range_group.create_dataset('FPS_z', data=FPS_z)
+        
+        _ = fObj.attrs.modify('nranges', int(curr_nranges+1))
 
-            # create group and add data
-            quantile_groupkey = "FluxPowerSpectrum_" + quantile_key
-            quantile_group = fObj.create_group(quantile_groupkey)
-
-            _ = quantile_group.attrs.create('tau_min', tau_eff_currQuantile_min)
-            _ = quantile_group.attrs.create('tau_max', tau_eff_currQuantile_max)
-            _ = quantile_group.attrs.create('tau_mean', tau_eff_currQuantile_mean)
-
-            _ = quantile_group.create_dataset('indices', data=indx_currQuantile)
-            _ = quantile_group.create_dataset('FPS_x', data=FPS_x)
-            _ = quantile_group.create_dataset('FPS_y', data=FPS_y)
-            _ = quantile_group.create_dataset('FPS_z', data=FPS_z)
 
 
     if args.verbose:
