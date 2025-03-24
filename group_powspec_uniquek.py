@@ -92,6 +92,11 @@ def main():
     with h5py.File(analysis_fPath, 'r+') as fObj:
         nQuantiles = fObj.attrs.get('nquantiles')
 
+        # flush out old uniquek analysis
+        uniquek_analysis_alive = 'k_uniq' in fObj.keys()
+        if uniquek_analysis_alive:
+            del fObj['k_uniq']
+
         # write k modes
         _ = fObj.create_dataset('k_uniq', data=k_uniq)
 
@@ -110,7 +115,7 @@ def main():
             FPS_currQuantile /= k_uniq_cts
 
             # delete data set if it is alive
-            if 'FPS_uniq' in quantile_group.keys():
+            if uniquek_analysis_alive:
                 del quantile_group['FPS_uniq']
         
             # write data
