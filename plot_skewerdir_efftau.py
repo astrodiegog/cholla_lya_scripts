@@ -4,8 +4,8 @@ This script will plot the effective optical depth distribution as a function
     of redshift. It will take in a skewer directory and a list of output
     strings and make a 2D histogram.
 
-TODO:
-    figure out a cleaner way to input multiple files
+Usage for directory named skewers:
+    $ python3 plot_skewerdir_efftau.py skewers/ -v 
 """
 import argparse
 from pathlib import Path
@@ -37,8 +37,6 @@ def create_parser():
         description="Plot the distribution of effective optical depths")
 
     parser.add_argument("skewdirname", help='Cholla skewer output directory name', type=str)
-
-    parser.add_argument("nOutputsStr", help='String of outputs delimited by comma', type=str)
 
     parser.add_argument('-f', '--fname', help='Output file name', type=str)
 
@@ -342,7 +340,7 @@ class ChollaOnTheFlySkewers:
 
 def main():
     '''
-    Compute the power spectrum and append to skewer file
+    Plot the effective optical depth as a function of redshift
     '''
 
     # Create parser
@@ -355,36 +353,83 @@ def main():
         print("we're verbose in this mf !")
         print(f"--- We are looking at skewer directory : {args.skewdirname} ---")
 
-        print(f"--- We will be using outputs : {args.nOutputsStr} ---")
-
-
     precision = np.float64
 
     # make sure directories exist
     skewer_dirPath = Path(args.skewdirname).resolve()
     assert skewer_dirPath.is_dir()
 
-    # parse nOutputsStr, get list of outputs, convert to np array
-    nOutputsStr_lst = args.nOutputsStr.split(',')
-    nOutputs_arr = np.zeros(len(nOutputsStr_lst), dtype=np.int64)
-    for n, nOutputStr in enumerate(nOutputsStr_lst):
-        # cast into int
-        nOutputs_arr[n] = int(nOutputStr)
-    nOutputs = nOutputs_arr.size
+    # define file name of plot
+    if args.fname:
+        fName = args.fname
+    else:
+        fName = f'efftau_distr.png'
+    img_fPath = Path(fName)
+
+    # define where file name will be placed
+    if args.outdir:
+        outdir_dirPath = Path(args.outdir)
+        outdir_dirPath = outdir_dirPath.resolve()
+        assert outdir_dirPath.is_dir()
+    else:
+        outdir_dirPath = Path.cwd()
+    img_fPath = outdir_dirPath / img_fPath
+
+    if args.verbose:
+        if args.outdir:
+            print(f"--- We are placing the output file in : {outdir_dirPath} ---")
+        else:
+            print(f"--- No output directory specified, so placing image in CWD: {outdir_dirPath} ---")
+
+        if args.fname:
+            print(f"--- We are saving the plot with file name : {fName} ---")
+        else:
+            print(f"--- No output file name specified, so it will be named : {fName} ---")
+
+    # figure out how many files in directory are skewer files
+    nOutputs = 0
+    for fPath in skewer_dirPath.iterdir():
+        fPath_split = fPath.stem.split('_')
+        is_skewerfile = False
+        if len(fPath_split) > 1:
+            is_skewerfile = fPath_split[1] == 'skewers'
+
+        if is_skewerfile:
+            nOutputs += 1
+
+    assert nOutputs > 1
 
     # make sure required keys are populated
     optdeptheff_key = 'taucalc_eff'
-    precision = np.float64
+
+    # initialize redshift bins
     redshift_bins = np.zeros(nOutputs+1, dtype=np.float64)
 
-    for n, nOutput in enumerate(nOutputs_arr):
-        skewer_fname = f"{nOutput:.0f}_skewers.h5"
-        skewer_fPath = skewer_dirPath / Path(skewer_fname)
+    # optical depth histogram bins
+    l_tau_min, l_tau_max = -4., 8.
+    tau_nbins = 250
+    l_tau_bins = np.linspace(l_tau_min, l_tau_max, tau_nbins)
+
+    hist_eff_ltau = np.zeros((tau_nbins-1, nOutputs))
+
+    # normalize by total number of skewers instead of only values within bins
+    normbynskews = True
+
+    n = 0
+    for fPath in skewer_dirPath.iterdir():
+        fPath_split = fPath.stem.split('_')
+        is_skewerfile = False
+        if len(fPath_split) > 1:
+            is_skewerfile = fPath_split[1] == 'skewers'
+
+        if not is_skewerfile:
+            continue # skip this file path
+
         if args.verbose:
-            print(f"--- Making sure {skewer_fPath} exists with required data ---")
+            print(f"--- Making sure {fPath} exists with required data ---")
 
         # create ChollaOTFSkewers object
-        OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
+        OTFSkewers = ChollaOnTheFlySkewers(fPath)
         OTFSkewers_x = OTFSkewers.get_skewersx_obj()
         OTFSkewers_y = OTFSkewers.get_skewersy_obj()
         OTFSkewers_z = OTFSkewers.get_skewersz_obj()
@@ -393,26 +438,10 @@ def main():
         assert OTFSkewers_y.check_datakey(optdeptheff_key)
         assert OTFSkewers_z.check_datakey(optdeptheff_key)      
 
-        redshift_bins[n] = OTFSkewers.current_z
-
-    # optical depth histogram bins
-    l_tau_min, l_tau_max = -4., 6.
-    tau_nbins = 250
-    l_tau_bins = np.linspace(l_tau_min, l_tau_max, tau_nbins) 
-
-    hist_eff_ltau = np.zeros((tau_nbins-1, nOutputs))
-
-    for n, nOutput in enumerate(nOutputs_arr):
-        skewer_fname = f"{nOutput:.0f}_skewers.h5"
-        skewer_fPath = skewer_dirPath / Path(skewer_fname)
         if args.verbose:
-            print(f"--- Making sure {skewer_fPath} exists with required data ---")
+            print(f"--- We have the data, now grabbing and histograming ---")
 
-        # create ChollaOTFSkewers object
-        OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath)
-        OTFSkewers_x = OTFSkewers.get_skewersx_obj()
-        OTFSkewers_y = OTFSkewers.get_skewersy_obj()
-        OTFSkewers_z = OTFSkewers.get_skewersz_obj()
+        redshift_bins[n] = OTFSkewers.current_z
 
         # grab effective optical depth, histogram it, place onto global array
         xefftaus = OTFSkewers_x.get_skeweralldata(optdeptheff_key, dtype=precision)
@@ -432,24 +461,29 @@ def main():
         znskews = zefftaus.size
         totnskews = xnskews + ynskews + znskews
 
-        normbynskews = True
         if normbynskews:
             # normalize by number of skewers
             norm_const = totnskews
         else:
-            # normalize by the total makeup in the bins
+            # normalize by the total makeup only in the bins
             norm_const = np.sum(hist_eff_ltau[:,nOutput])
 
         # normalize at each redshift bin
         hist_eff_ltau[:,n] = hist_eff_ltau[:,n] / norm_const
+        n += 1
+    
+    indices_redshiftsort = np.argsort(redshift_bins)
+    redshift_bins_sorted = redshift_bins[indices_redshiftsort]
+    hist_eff_ltau_sorted = hist_eff_ltau[:, indices_redshiftsort[1:]] # first index will be zero
+
 
     yaxis_label = r'$\tau_{\rm{med}}$'
-    yaxis_low, yaxis_hi = 1.e-4, 1.e6
+    yaxis_low, yaxis_hi = 1.e-4, 1.e8
     xlabel_str = r'$z$'
     z_low, z_hi = np.min(redshift_bins) * 0.95, np.max(redshift_bins) * 1.05
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
-    im0 = ax.pcolormesh(redshift_bins, 10**(l_tau_bins), np.log10(hist_eff_ltau))
+    im0 = ax.pcolormesh(redshift_bins_sorted, 10**(l_tau_bins), np.log10(hist_eff_ltau_sorted))
 
     _ = ax.set_xlim(z_low, z_hi)
     _ = ax.set_ylim(yaxis_low, yaxis_hi)
