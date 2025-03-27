@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-This script will plot the mean optical depth along each skewer in a 
-    distribution as a function of redshift. It will take in a skewer 
-    directory and a list of output strings and make a 2D histogram.
+This script will plot the mean optical depth along a skewer in a distribution 
+    as a function of redshift. It will take in a skewer directory and a list 
+    of output strings and make a 2D histogram.
 
 Usage for directory named skewers:
     $ python3 plot_skewerdir_meantau.py skewers/ -v 
@@ -34,7 +34,7 @@ def create_parser():
     '''
 
     parser = argparse.ArgumentParser(
-        description="Plot the distribution of effective optical depths")
+        description="Plot the distribution of mean optical depths along a skewer")
 
     parser.add_argument("skewdirname", help='Cholla skewer output directory name', type=str)
 
@@ -340,7 +340,7 @@ class ChollaOnTheFlySkewers:
 
 def main():
     '''
-    Plot the mean optical depth of each skewer as a function of redshift
+    Plot the mean optical depth as a function of redshift
     '''
 
     # Create parser
@@ -363,7 +363,7 @@ def main():
     if args.fname:
         fName = args.fname
     else:
-        fName = f'efftau_distr.png'
+        fName = f'meantau_distr.png'
     img_fPath = Path(fName)
 
     # define where file name will be placed
@@ -399,22 +399,28 @@ def main():
 
     assert nOutputs > 1
 
+    # define limits to look around optical depth and redshift
+    fig14view = True
+    if fig14view:
+        l_tau_min, l_tau_max = -1., 1.
+    else:
+        l_tau_min, l_tau_max = -4., 8.
+
     # make sure required keys are populated
-    optdeptheff_key = 'taucalc_eff'
     tau_local_key = "taucalc_local"
 
     # initialize redshift bins
     redshift_bins = np.zeros(nOutputs+1, dtype=np.float64)
 
     # optical depth histogram bins
-    l_tau_min, l_tau_max = -4., 8.
     tau_nbins = 250
     l_tau_bins = np.linspace(l_tau_min, l_tau_max, tau_nbins)
 
-    hist_eff_ltau = np.zeros((tau_nbins-1, nOutputs))
-
-    # normalize by total number of skewers instead of only values within bins
-    normbynskews = True
+    hist_mean_ltau = np.zeros((tau_nbins-1, nOutputs))
+    tau_mean_mean_arr = np.zeros(nOutputs, dtype=precision)
+    tau_mean_18perc_arr = np.zeros(nOutputs, dtype=precision)
+    tau_mean_50perc_arr = np.zeros(nOutputs, dtype=precision)
+    tau_mean_84perc_arr = np.zeros(nOutputs, dtype=precision)
 
     n = 0
     for fPath in skewer_dirPath.iterdir():
@@ -435,62 +441,81 @@ def main():
         OTFSkewers_y = OTFSkewers.get_skewersy_obj()
         OTFSkewers_z = OTFSkewers.get_skewersz_obj()
 
-        assert OTFSkewers_x.check_datakey(optdeptheff_key)
-        assert OTFSkewers_y.check_datakey(optdeptheff_key)
-        assert OTFSkewers_z.check_datakey(optdeptheff_key)      
+        assert OTFSkewers_x.check_datakey(tau_local_key)
+        assert OTFSkewers_y.check_datakey(tau_local_key)
+        assert OTFSkewers_z.check_datakey(tau_local_key)      
 
         if args.verbose:
             print(f"--- We have the data, now grabbing and histograming ---")
 
         redshift_bins[n] = OTFSkewers.current_z
 
-        # grab effective optical depth, histogram it, place onto global array
-        xloctaus = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
-        yloctaus = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
-        zloctaus = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
+        # grab local optical depth
+        tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
+        tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
+        tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
 
-        xefftaus = np.median(xloctaus, axis=1)
-        yefftaus = np.median(yloctaus, axis=1)
-        zefftaus = np.median(zloctaus, axis=1)
+        tau_mean_x = np.mean(tau_local_x, axis=1)
+        tau_mean_y = np.mean(tau_local_y, axis=1)
+        tau_mean_z = np.mean(tau_local_z, axis=1)
 
-        xeff_ltau_hist, _ = np.histogram(np.log10(xefftaus.flatten()), bins=l_tau_bins)
-        yeff_ltau_hist, _ = np.histogram(np.log10(yefftaus.flatten()), bins=l_tau_bins)
-        zeff_ltau_hist, _ = np.histogram(np.log10(zefftaus.flatten()), bins=l_tau_bins)
+        nSkews_x = tau_mean_x.size
+        nSkews_y = tau_mean_y.size
+        nSkews_z = tau_mean_z.size
+        totnSkews = nSkews_x + nSkews_y + nSkews_z
 
-        hist_eff_ltau[:,n] += xeff_ltau_hist
-        hist_eff_ltau[:,n] += yeff_ltau_hist
-        hist_eff_ltau[:,n] += zeff_ltau_hist
+        # place all optical depths into one array
+        tau_mean_all = np.zeros(totnSkews, dtype=precision)
+        tau_mean_all[ : (nSkews_x)] = tau_mean_x.flatten()
+        tau_mean_all[ (nSkews_x) : (nSkews_x + nSkews_y)] = tau_mean_y.flatten()
+        tau_mean_all[ (nSkews_x + nSkews_y) : ] = tau_mean_z.flatten()
 
-        xnskews = xefftaus.size
-        ynskews = yefftaus.size
-        znskews = zefftaus.size
-        totnskews = xnskews + ynskews + znskews
+        # calculate mean, 16-50-84 percentiles
+        tau_mean_mean_arr[n] = np.mean(tau_mean_all)
+        tau_mean_18perc_arr[n] = np.percentile(tau_mean_all, 18)
+        tau_mean_50perc_arr[n] = np.percentile(tau_mean_all, 50)
+        tau_mean_84perc_arr[n] = np.percentile(tau_mean_all, 84)
 
-        if normbynskews:
-            # normalize by number of skewers
-            norm_const = totnskews
-        else:
-            # normalize by the total makeup only in the bins
-            norm_const = np.sum(hist_eff_ltau[:,nOutput])
+        # histogram it !
+        l_tau_hist_all, _ = np.histogram(np.log10(tau_mean_all), bins=l_tau_bins)
+
+        # place onto global array
+        hist_mean_ltau[:,n] += l_tau_hist_all
 
         # normalize at each redshift bin
-        hist_eff_ltau[:,n] = hist_eff_ltau[:,n] / norm_const
+        hist_mean_ltau[:,n] = hist_mean_ltau[:,n] / totnSkews
         n += 1
-        print(n, OTFSkewers.current_z)
-
     
     indices_redshiftsort = np.argsort(redshift_bins)
     redshift_bins_sorted = redshift_bins[indices_redshiftsort]
-    hist_eff_ltau_sorted = hist_eff_ltau[:, indices_redshiftsort[1:]] # first index will be zero
+    hist_mean_ltau_sorted = hist_mean_ltau[:, indices_redshiftsort[1:]] # first index will be zero
+    tau_mean_mean_arr_sorted = tau_mean_mean_arr[indices_redshiftsort[1:]]
+    tau_mean_18perc_arr_sorted = tau_mean_18perc_arr[indices_redshiftsort[1:]]
+    tau_mean_50perc_arr_sorted = tau_mean_50perc_arr[indices_redshiftsort[1:]]
+    tau_mean_84perc_arr_sorted = tau_mean_84perc_arr[indices_redshiftsort[1:]]
 
+    redshift_center_sorted = (redshift_bins_sorted[1:] + redshift_bins_sorted[:-1]) / 2.
 
-    yaxis_label = r'$\tau_{\rm{med}}$'
-    yaxis_low, yaxis_hi = 1.e-4, 1.e8
+    yaxis_label = r'$\tau_{\rm{skewer,mean}}$'
+    yaxis_low, yaxis_hi = 10**(l_tau_min), 10**(l_tau_max)
     xlabel_str = r'$z$'
-    z_low, z_hi = np.min(redshift_bins) * 0.95, np.max(redshift_bins) * 1.05
+    if fig14view:
+        z_low, z_hi = 2.0, 6.0
+    else:
+        z_low, z_hi = np.min(redshift_bins) * 0.95, np.max(redshift_bins) * 1.05
+
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
-    im0 = ax.pcolormesh(redshift_bins_sorted, 10**(l_tau_bins), np.log10(hist_eff_ltau_sorted))
+    im0 = ax.pcolormesh(redshift_bins_sorted, 10**(l_tau_bins), 
+                        np.log10(hist_mean_ltau_sorted))
+    _ = ax.plot(redshift_center_sorted, tau_mean_mean_arr_sorted, ls='--', 
+                label=r'$\rm{Mean}$', marker='.', markersize=10, zorder=3)
+    _ = ax.plot(redshift_center_sorted, tau_mean_18perc_arr_sorted, ls='-', 
+                label=r'$18-50-84 \%$', c='k', marker='.', markersize=10,)
+    _ = ax.plot(redshift_center_sorted, tau_mean_50perc_arr_sorted, ls='-', 
+                c='k', marker='.', markersize=10)
+    _ = ax.plot(redshift_center_sorted, tau_mean_84perc_arr_sorted, ls='-', 
+                c='k', marker='.', markersize=10)
 
     _ = ax.set_xlim(z_low, z_hi)
     _ = ax.set_ylim(yaxis_low, yaxis_hi)
@@ -498,6 +523,7 @@ def main():
 
     # add background grid and legend
     _ = ax.grid(which='both', axis='both', alpha=0.3)
+    _ = ax.legend(loc='lower right')
 
     # place colorbar
     cbar_ax = fig.add_axes([0.98, 0.105, 0.04, 0.85])
@@ -505,7 +531,7 @@ def main():
     _ = cbar_ax.yaxis.set_ticks_position('right')
 
     # add colorbar label & ensure no overlap w/ticks
-    cbar_str = r"$\log_{10} \rm{P}(\tau_{\rm{med}} | z)$"
+    cbar_str = r"$\log_{10} \rm{P}(\tau_{\rm{skewer,mean}} | z)$"
     _ = cbar_ax.set_ylabel(cbar_str, rotation=270)
     _ = cbar_ax.yaxis.set_label_position('right')
     _ = cbar_ax.yaxis.labelpad = 20
@@ -518,34 +544,7 @@ def main():
 
     # tighten layout
     _ = fig.tight_layout()
-
-    # saving time !
-    if args.fname:
-        fName = args.fname
-    else:
-        fName = f'efftau_distr.png'
-    img_fPath = Path(fName)
-
-    if args.outdir:
-        outdir_dirPath = Path(args.outdir)
-        outdir_dirPath = outdir_dirPath.resolve()
-        assert outdir_dirPath.is_dir()
-    else:
-        outdir_dirPath = Path.cwd()
-    img_fPath = outdir_dirPath / img_fPath
-
-    if args.verbose:
-        if args.outdir:
-            print(f"--- We are placing the output file in : {outdir_dirPath} ---")
-        else:
-            print(f"--- No output directory specified, so placing image in CWD: {outdir_dirPath} ---")
-
-        if args.fname:
-            print(f"--- We are saving the plot with file name : {fName} ---")
-        else:
-            print(f"--- No output file name specified, so it will be named : {fName} ---")
-
-
+    
     _ = fig.savefig(img_fPath, dpi=256, bbox_inches = "tight")
     plt.close(fig)
 
