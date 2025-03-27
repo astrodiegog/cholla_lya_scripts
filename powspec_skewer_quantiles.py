@@ -914,10 +914,10 @@ def main():
         fluxes_mean_skew_all[ (nskewers_x + nskewers_y) : ] = fluxes_mean_skew_z
 
         # calculate mean and 18-50-84 percentiles of mean flux across skewer
-        meanF_mean_skew = np.mean(meanF_local_skew_all)
-        uppF_mean_skew = np.percentile(meanF_local_skew_all, 84)
-        medF_mean_skew = np.percentile(meanF_local_skew_all, 50)
-        lowF_mean_skew = np.percentile(meanF_local_skew_all, 18)
+        meanF_mean_skew = np.mean(fluxes_mean_skew_all)
+        uppF_mean_skew = np.percentile(fluxes_mean_skew_all, 84)
+        medF_mean_skew = np.percentile(fluxes_mean_skew_all, 50)
+        lowF_mean_skew = np.percentile(fluxes_mean_skew_all, 18)
 
         tau_meanF_mean_skew = - np.log(meanF_mean_skew)
         tau_uppF_mean_skew = - np.log(uppF_mean_skew)
@@ -933,7 +933,7 @@ def main():
         tau_meanF_local = - np.log(meanF_local)
         tau_uppF_local = - np.log(uppF_local)
         tau_medF_local = - np.log(medF_local)
-        tau_lowF_local = - np.log(lowFlocal)
+        tau_lowF_local = - np.log(lowF_local)
 
 
     # find the index of the skewers that do not fall within the input range & print its info
