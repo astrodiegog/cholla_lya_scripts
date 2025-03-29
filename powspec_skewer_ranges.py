@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-This script takes the transmitted flux power spectrum binned by some number
-    of quantiles bounded by a lower and upper effective optical depth. This
-    script assumes that the optical depth has been computed and saved to the 
-    skewer files as taucalc_local and taucalc_eff. This script will create a
-    file with the following structure
+This script takes the transmitted flux power spectrum bounded by some optical
+    depth range. This script assumes that the optical depth has been computed
+    and saved to the skewer files as taucalc_local and taucalc_eff. This 
+    script will create a file with the following structure
+
 
 nOutput_fluxpowerspectrum_optdepthbin.h5
 ├── attrs
-├── FluxPowerSpectrum_quantile_0
+├── FluxPowerSpectrum_range_0
 │   └── attrs
 │   └── indices
 │   └── FPS_x
 │   └── FPS_y
 │   └── FPS_z
-├── FluxPowerSpectrum_quantile_1
+├── FluxPowerSpectrum_range_1
 │   └── attrs
 │   └── indices
 │   └── FPS_x
 │   └── FPS_y
 │   └── FPS_z
 ...
-├── FluxPowerSpectrum_quantile_NQUANTILE
+├── FluxPowerSpectrum_range_NRANGE
 │   └── attrs
 │   └── indices
 │   └── FPS_x
@@ -30,17 +30,19 @@ nOutput_fluxpowerspectrum_optdepthbin.h5
 └── ...
 
     where the attributes for the root group will inherit the same attributes
-    as from the skewer file. The attributes for each quantile group saves the 
-    min, max, and mean effective optical depth of this quantile. The indices
-    dataset describes the details of the skewer that lands in this quantile.
+    as from the skewer file. The attributes for each range group saves the 
+    min, max, and mean effective optical depth of this range. The indices
+    dataset describes the details of the skewer that lands in this range.
     Values will run from zero to the total number of skewers summed along all 
     axes, so we choose to have indices (0, nCells[0]) correspond to skewer IDs 
     along the x-axis, (nCells[0], nCells[1]) to skewer IDs along the y-axis, 
     and (nCells[0] + nCells[1], ) to skewer IDs along the z-axis. The flux
-    power spectra in each direction is also saved in the quantiles.
+    power spectra in each direction is also saved in the ranges. Range groups
+    are enumerated after the first is created. Lightweight file structure so
+    appending new range groups isn't very heavy on the file.
 
-Usage for 10 quantiles bounded by optical depths 0.001 and 100.0:
-    $ python3 powspec_skewer_quantiles.py 0_skewers.h5 10 0.001 100.0 -v
+Usage for skewers bounded by optical depths 0.001 and 100.0:
+    $ python3 powspec_skewer_range.py 0_skewers.h5 0.001 100.0 -v
 
     the output file will have the name 0_fluxpowerspectrum_optdepthbin.h5
 """
@@ -615,7 +617,7 @@ class ChollaOnTheFlySkewers:
 def main():
     '''
     Group skewers by effective optical depth, compute flux power spectrum, and
-        create nOutput_fluxpowerspectrum_optdepthbin.h5 file
+        create or append nOutput_fluxpowerspectrum_optdepthbin.h5 file
     '''
 
     # Create parser

@@ -617,7 +617,7 @@ class ChollaOnTheFlySkewers:
 def main():
     '''
     Group skewers by effective optical depth, compute flux power spectrum, and
-        create nOutput_fluxpowerspectrum_optdepthbin.h5 file
+        create or append nOutput_fluxpowerspectrum_optdepthbin.h5 file
     '''
 
     # Create parser
