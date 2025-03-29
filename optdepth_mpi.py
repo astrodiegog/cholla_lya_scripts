@@ -770,12 +770,17 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
         if verbose:
             print(f'--- {rank_idstr} : \t...initializing optical depth calculations for file {OTFSkewers.OTFSkewersfPath} ---')
 
-
         if f'calctime_{size:.0f}_nprocs' not in fObj.keys():
             calctime_arr = np.zeros(size, dtype=np.float64)
             fObj.create_dataset(f'calctime_{size:.0f}_nprocs', data=calctime_arr)
         elif restart:
             fObj[f'calctime_{size:.0f}_nprocs'][:] = 0.
+
+        if f'inittime_{size:.0f}_nprocs' not in fObj.keys():
+            calctime_arr = np.zeros(size, dtype=np.float64)
+            fObj.create_dataset(f'inittime_{size:.0f}_nprocs', data=calctime_arr)
+        elif restart:
+            fObj[f'inittime_{size:.0f}_nprocs'][:] = 0.
 
         OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
                         OTFSkewers.get_skewersy_obj(),
@@ -909,13 +914,11 @@ def main():
     # create ChollaOTFSkewers object
     OTFSkewers = ChollaOnTheFlySkewers(skewer_fPath, comm)
 
-    if args.verbose:
-        t_init_start = MPI.Wtime()
-
     # add progress attribute, boolean mask for whether tau is calculated, and tau itself
+    t_init_start = MPI.Wtime()
     init_taucalc(OTFSkewers, comm, restart=args.restart, verbose=args.verbose)
+    t_init_end = MPI.Wtime()
     if args.verbose:
-        t_init_end = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_init_end - t_init_start:.4e} secs to initialize info ---")
 
     # create cosmology and snapshot header
@@ -968,8 +971,7 @@ def main():
             print(f"--- {rank_idstr} : Took {t_end - t_start:.4e} secs for entire calculation ---")
 
         fObj[f'calctime_{size:.0f}_nprocs'][rank] = t_end - t_start
-
-
+        fObj[f'inittime_{size:.0f}_nprocs'][rank] = t_init_end - t_init_start
 
         
 

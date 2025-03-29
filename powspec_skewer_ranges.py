@@ -73,8 +73,6 @@ def create_parser():
 
     parser.add_argument("skewfname", help='Cholla skewer output file name', type=str)
 
-    parser.add_argument("nquantiles", help='Number of quantiles to bin the optical depths', type=int)
-
     parser.add_argument("optdepthlow", help='Lower effective optical depth limit to bin', type=float)
 
     parser.add_argument("optdepthupp", help='Upper effective optical depth limit to bin', type=float)
@@ -630,7 +628,6 @@ def main():
         print("we're verbose in this mf !")
         print(f"--- We are looking at skewer file : {args.skewfname} ---")
         
-        print(f"--- We are binning effective optical depth in {args.nquantiles:.0f} quantiles ---")
         print(f"--- We have a range from {args.optdepthlow:.3e} to {args.optdepthupp:.3e}---")
 
 
@@ -668,8 +665,6 @@ def main():
             calc_string += f'--- Mean local flux + Mean local flux optical depth ---'
             print(calc_string)
 
-    # ensure number of quantiles is reasonable
-    assert args.nquantiles > 0
 
     # ensure limits are reasonable
     assert args.optdepthlow >= 0
@@ -759,7 +754,6 @@ def main():
         tau_eff_med = np.percentile(tau_eff_all, 50)
         tau_eff_low = np.percentile(tau_eff_all, 18)
 
-
     # create a mask of all effective optical depths within our range
     tau_eff_all_inbounds_mask = (tau_eff_all > args.optdepthlow) & (tau_eff_all < args.optdepthupp)
     nskewers_inbounds = np.sum(tau_eff_all_inbounds_mask)
@@ -767,125 +761,35 @@ def main():
         print(f"--- We have {nskewers_inbounds:.0f} skewers falling within effective optical depth range from total {nskewers_tot:.0f} skewers")
     assert nskewers_inbounds > 0
 
-    # calculate the number of skewers that is going to fall within each quantile
-    nskewers_perquantile = nskewers_inbounds / args.nquantiles
 
     # index of (0, nskewers_x) corresponds to x-axis
     # index of (nskewers_x, nskewers_x + nskewers_y) corresponds to y-axis
     # index of (nskewers_x + nskewers_y, nskewers_x + nskewers_y + nskewers_z) corresponds to z-axis
-    indices_all_taueffsort = np.argsort(tau_eff_all)
+    indx_all_inbounds = np.argwhere(tau_eff_all_inbounds_mask).flatten()
 
-    # take mask of effective optical depths in range and sort by effective optical depth
-    indices_all_inbounds_mask_taueffsort = tau_eff_all_inbounds_mask[indices_all_taueffsort]
+    # make masks of the indices that fall within a specific axis
+    indx_x_inbounds_mask = indx_all_inbounds < (nskewers_x)
+    indx_y_inbounds_mask = ( (nskewers_x) < indx_all_inbounds) & (indx_all_inbounds < (nskewers_x + nskewers_y))
+    indx_z_inbounds_mask = ( (nskewers_x + nskewers_y) < indx_all_inbounds)
 
-    if args.verbose:
-        print(f"--- We have sorted skewers by effective optical depth ---")
- 
-    # array of sorted indices that fall within range
-    indices_all_taueffsort_inbounds = indices_all_taueffsort[indices_all_inbounds_mask_taueffsort]
+    nskews_x_inbounds = np.sum(indx_x_inbounds_mask)
+    nskews_y_inbounds = np.sum(indx_y_inbounds_mask)
+    nskews_z_inbounds = np.sum(indx_z_inbounds_mask)
 
-    # create indexing array that places each sorted opt depth into a quantile
-    indices_all_inbounds_arange_quantile = np.floor(np.arange(nskewers_inbounds) / nskewers_perquantile)
+    # apply masks to get indices in each axis
+    indx_x_inbounds = indx_all_inbounds[indx_x_inbounds_mask]
+    indx_y_inbounds = indx_all_inbounds[indx_y_inbounds_mask]
+    indx_z_inbounds = indx_all_inbounds[indx_z_inbounds_mask]
 
-    # create index directories for each quantile. may not have same number of skewers in each quantile
-    indices_all_quantiles = {}
-
-    # create dict to hold the mean local and effective optical depth in each quantile
-    mean_tau_local_quantiles, mean_tau_eff_quantiles = {}, {}
-
-    # initialize dict for the mean flux from effective and local optical depth in each quantile
-    meanF_local_quantiles, meanF_eff_quantiles = {}, {}
-
-    # initialize dict optical depth from mean effective and local flux
-    tau_meanF_local_quantiles, tau_meanF_eff_quantiles = {}, {}
-
-    if args.verbose:
-        curr_str = f'--- Distribution of skewers in nOutput {nOutput} / scale factor: '
-        curr_str += f'{scale_factor:.4f} / redshift: {redshift:.4f} --- '
-        print(curr_str)
-        print(f'--- | nquantile | tau_min | tau_max | Mean (tau_eff) | Mean(tau_local) | tau_meanF_eff | tau_meanF_local | x_skewers | y_skewers | z_skewers | ---')
+    # calculate the skewer id each index corresponds to
+    skewid_x_inbounds = indx_x_inbounds % nskewers_x
+    skewid_y_inbounds = indx_y_inbounds % nskewers_y
+    skewid_z_inbounds = indx_z_inbounds % nskewers_z
 
     # save the local optical depths
     tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
     tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
     tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
-
-    for nquantile in range(args.nquantiles):
-        # grab the indices corresponding to number of skewers in this quantile
-        indices_all_inbounds_inquantile = nquantile == indices_all_inbounds_arange_quantile
-        
-        # grab sorted indices within range, and index into skewers corresponding to this quantile
-        indx_currQuantile = indices_all_taueffsort_inbounds[indices_all_inbounds_inquantile]
-
-        # save the indices within this quantile
-        quantile_key = f'quantile_{nquantile:.0f}'
-        indices_all_quantiles[quantile_key] = indx_currQuantile
-
-        nskews_inquantile = np.sum(indices_all_inbounds_inquantile)
-        
-        # make masks of the indices that fall within a specific axis
-        indx_x_currQuantile_mask = indx_currQuantile < (nskewers_x)
-        indx_y_currQuantile_mask = ( (nskewers_x) < indx_currQuantile) & (indx_currQuantile < (nskewers_x + nskewers_y))
-        indx_z_currQuantile_mask = ( (nskewers_x + nskewers_y) < indx_currQuantile)
-
-        nskews_x_currQuantile = np.sum(indx_x_currQuantile_mask)
-        nskews_y_currQuantile = np.sum(indx_y_currQuantile_mask)
-        nskews_z_currQuantile = np.sum(indx_z_currQuantile_mask)
-
-        # apply masks to get indices in each axis
-        indx_x_currQuantile = indx_currQuantile[indx_x_currQuantile_mask]
-        indx_y_currQuantile = indx_currQuantile[indx_y_currQuantile_mask]
-        indx_z_currQuantile = indx_currQuantile[indx_z_currQuantile_mask]
-
-        # calculate the skewer id each index corresponds to
-        skewid_x_currQuantile = indx_x_currQuantile % nskewers_x
-        skewid_y_currQuantile = indx_y_currQuantile % nskewers_y
-        skewid_z_currQuantile = indx_z_currQuantile % nskewers_z
-
-        # create an array for all local optical depths along an axis
-        tau_local_x_currQuantile = tau_local_x[skewid_x_currQuantile].flatten()
-        tau_local_y_currQuantile = tau_local_y[skewid_y_currQuantile].flatten()
-        tau_local_z_currQuantile = tau_local_z[skewid_z_currQuantile].flatten()
-
-        # calculate number of cells in quantile (same as summing all tau_local sizes)
-        nCells_x_currQuantile = int(nskews_x_currQuantile * nCells[0])
-        nCells_y_currQuantile = int(nskews_y_currQuantile * nCells[1])
-        nCells_z_currQuantile = int(nskews_z_currQuantile * nCells[2])
-        nCells_currQuantile = int(nCells_x_currQuantile + nCells_y_currQuantile + nCells_z_currQuantile)
-        
-        # place all local optical depths
-        tau_local_currQuantile = np.zeros(nCells_currQuantile, dtype=precision)
-        tau_local_currQuantile[ : (nCells_x_currQuantile) ] = tau_local_x_currQuantile
-        tau_local_currQuantile[ (nCells_x_currQuantile) : (nCells_x_currQuantile + nCells_y_currQuantile) ] = tau_local_y_currQuantile
-        tau_local_currQuantile[ (nCells_x_currQuantile + nCells_y_currQuantile) : ] = tau_local_z_currQuantile
-        
-        # calculate mean effective and local optical depths falling in quantile
-        mean_tau_local_quantiles[quantile_key] = np.mean(tau_local_currQuantile)
-        tau_eff_currQuantile = tau_eff_all[indx_currQuantile]
-        mean_tau_eff_quantiles[quantile_key] = np.mean(tau_eff_currQuantile)
-
-        # calculate fluxes and the mean
-        fluxes_local_currQuantile = np.exp(- tau_local_currQuantile)
-        meanF_local_quantiles[quantile_key] = np.mean(fluxes_local_currQuantile)
-        fluxes_eff_currQuantile = np.exp(- tau_eff_currQuantile)
-        meanF_eff_quantiles[quantile_key] = np.mean(fluxes_eff_currQuantile)
-
-        # calculate effective optical depth wrt mean flux values
-        tau_meanF_local_quantiles[quantile_key] = -np.log(meanF_local_quantiles[quantile_key])
-        tau_meanF_eff_quantiles[quantile_key] = -np.log(meanF_eff_quantiles[quantile_key])
-
-        if args.verbose:
-            curr_str = f"--- | {nquantile:.0f} | "
-            curr_str += f"{tau_eff_all[indx_currQuantile[0]]:.4e} | "
-            curr_str += f"{tau_eff_all[indx_currQuantile[-1]]:.4e} | "
-            curr_str += f"{mean_tau_eff_quantiles[quantile_key]:.4e} | "
-            curr_str += f"{mean_tau_local_quantiles[quantile_key]:.4e} | "
-            curr_str += f"{tau_meanF_eff_quantiles[quantile_key]:.4e} | "
-            curr_str += f"{tau_meanF_local_quantiles[quantile_key]:.4e} | "
-            curr_str += f"{100 * nskews_x_currQuantile / nskewers_tot:.4f} % | "
-            curr_str += f"{100 * nskews_y_currQuantile / nskewers_tot:.4f} % | "
-            curr_str += f"{100 * nskews_z_currQuantile / nskewers_tot:.4f} % | --- "
-            print(curr_str)
 
     if not outfile_exists:
         # calculate the local fluxes
@@ -901,7 +805,7 @@ def main():
         fluxes_local_all[ : (nCells_x) ] = fluxes_local_x.flatten()
         fluxes_local_all[ (nCells_x) : (nCells_x + nCells_y)] = fluxes_local_y.flatten()
         fluxes_local_all[ (nCells_x + nCells_y) : ] = fluxes_local_z.flatten()
-    
+
         # calculate the mean flux along each skewer
         fluxes_mean_skew_x = np.mean(fluxes_local_x, axis=1)
         fluxes_mean_skew_y = np.mean(fluxes_local_y, axis=1)
@@ -935,78 +839,45 @@ def main():
         tau_medF_local = - np.log(medF_local)
         tau_lowF_local = - np.log(lowF_local)
 
+    # create an array for all local optical depths along an axis
+    tau_local_x_inbounds = tau_local_x[skewid_x_inbounds].flatten()
+    tau_local_y_inbounds = tau_local_y[skewid_y_inbounds].flatten()
+    tau_local_z_inbounds = tau_local_z[skewid_z_inbounds].flatten()
 
-    # find the index of the skewers that do not fall within the input range & print its info
-    indx_outQuantiles = np.argwhere(~tau_eff_all_inbounds_mask)
-    nskews_outQuantiles = np.sum(~tau_eff_all_inbounds_mask)
+    # calculate number of cells in bounds (same as summing all tau_local_inbounds sizes)
+    nCells_x_inbounds = int(nskews_x_inbounds * nCells[0])
+    nCells_y_inbounds = int(nskews_y_inbounds * nCells[1])
+    nCells_z_inbounds = int(nskews_z_inbounds * nCells[2])
+    nCells_inbounds = int(nCells_x_inbounds + nCells_y_inbounds + nCells_z_inbounds)
+        
+    # place all local optical depths
+    tau_local_inbounds = np.zeros(nCells_inbounds, dtype=precision)
+    tau_local_inbounds[ : (nCells_x_inbounds) ] = tau_local_x_inbounds
+    tau_local_inbounds[ (nCells_x_inbounds) : (nCells_x_inbounds + nCells_y_inbounds) ] = tau_local_y_inbounds
+    tau_local_inbounds[ (nCells_x_inbounds + nCells_y_inbounds) : ] = tau_local_z_inbounds
+        
+    # calculate fluxes and the mean
+    fluxes_local_inbounds = np.exp(- tau_local_inbounds)
+    fluxes_eff_inbounds = np.exp(- tau_eff_all[tau_eff_all_inbounds_mask])
+    meanF_local_inbounds = np.mean(fluxes_local_inbounds)
+    meanF_eff_inbounds = np.mean(fluxes_eff_inbounds)
 
-    if args.verbose and nskews_outQuantiles:
-        curr_str = f"--- We have {nskews_outquantiles:.0f} / {nskewers_tot:.0f} = "
-        curr_str += f"{100 * nskews_outquantiles / nskewers_tot:.0f} % skewers outside of bounds ---"
+    # calculate effective optical depth wrt mean flux values
+    tau_meanF_local_inbounds = -np.log(meanF_local_inbounds)
+    tau_meanF_eff_inbounds = -np.log(meanF_eff_inbounds)
+
+    if args.verbose:
+        curr_str = f'--- Mean local flux (inbounds) : {meanF_local_inbounds:.4e} / tau : {tau_meanF_local_inbounds:.4e} ---'
+        curr_str = f'--- Mean effective flux (inbounds) : {meanF_eff_inbounds:.4e} / tau : {tau_meanF_eff_inbounds:.4e} ---'
         print(curr_str)
 
-        # make masks of the indices that fall within a specific axis
-        indx_x_outQuantiles_mask = indx_outQuantile < (nskewers_x)
-        indx_y_outQuantiles_mask = ( (nskewers_x) < indx_outQuantiles) & (indx_outQuantiles < (nskewers_x + nskewers_y))
-        indx_z_outQuantiles_mask = ( (nskewers_x + nskewers_y) < indx_outQuantiles)
+    # find the index of the skewers that do not fall within the input range & print its info
+    indx_all_outbounds = np.argwhere(~tau_eff_all_inbounds_mask).flatten()
+    nskews_outbounds = np.sum(~tau_eff_all_inbounds_mask)
 
-        nskews_x_outQuantiles = np.sum(indx_x_outQuantiles_mask)
-        nskews_y_outQuantiles = np.sum(indx_y_outQuantiles_mask)
-        nskews_z_outQuantiles = np.sum(indx_z_outQuantiles_mask)
-
-        # apply masks to get indices in each axis
-        indx_x_outQuantiles = indx_outQuantiles[indx_x_outQuantiles_mask]
-        indx_y_outQuantiles = indx_outQuantiles[indx_y_outQuantiles_mask]
-        indx_z_outQuantiles = indx_outQuantiles[indx_z_outQuantiles_mask]
-
-        # create an array for all local optical depths along an axis
-        tau_local_x_outQuantiles = tau_local_x[indx_x_outQuantiles_mask].flatten()
-        tau_local_y_outQuantiles = tau_local_y[indx_y_outQuantiles_mask].flatten()
-        tau_local_z_outQuantiles = tau_local_z[indx_z_outQuantiles_mask].flatten()
-
-        # calculate number of cells in quantile (same as summing all tau_local sizes)
-        nCells_x_outQuantiles = int(nskews_x_outQuantiles * nCells[0])
-        nCells_y_outQuantiles = int(nskews_y_outQuantiles * nCells[1])
-        nCells_z_outQuantiles = int(nskews_z_outQuantiles * nCells[2])
-        nCells_outQuantiles = int(nCells_x_outQuantiles + nCells_y_outQuantiles + nCells_z_outQuantiles)
-
-        # place all local optical depths
-        tau_local_outQuantiles = np.zeros(nCells_currQuantile, dtype=precision)
-        tau_local_outQuantiles[ : (nCells_x_outQuantiles) ] = tau_local_x_currQuantile
-        tau_local_outQuantiles[ (nCells_x_outQuantiles) : (nCells_x_outQuantiles + nCells_y_outQuantiles) ] = tau_local_y_outQuantiles
-        tau_local_outQuantiles[ (nCells_x_outQuantiles + nCells_y_outQuantiles) : ] = tau_local_z_outQuantiles
-
-        # calculate mean effective and local optical depths falling in quantile
-        mean_tau_local_outQuantiles = np.mean(tau_local_outQuantiles)
-        tau_eff_outQuantiles = tau_eff_all[indx_outQuantile]
-        mean_tau_eff_Quantiles = np.mean(tau_eff_outQuantiles)
-
-        # calculate fluxes and the mean
-        fluxes_local_outQuantiles = np.exp(- tau_local_outQuantiles)
-        meanF_local_outQuantiles = np.mean(fluxes_local_outQuantiles)
-        fluxes_eff_outQuantiles = np.exp(- tau_eff_outQuantiles)
-        meanF_eff_outQuantiles = np.mean(fluxes_eff_outQuantiles)
-
-        # calculate effective optical depth wrt mean flux values
-        tau_meanF_local = -np.log(meanF_local_outQuantiles)
-        tau_meanF_eff = -np.log(meanF_eff_outQuantiles)
-
-
-        # calculate flux
-        fluxes_local_currQuantile = np.exp(- tau_local_currQuantile)
-
-        curr_str = f"--- | out | "
-        curr_str += f"{tau_eff_all[indx_outQuantiles[0]]:.4e} | "
-        curr_str += f"{tau_eff_all[indx_outQuantiles[-1]]:.4e} | "
-
-        curr_str += f"{mean_tau_eff_outQuantiles:.4e} | "
-        curr_str += f"{mean_tau_local_outQuantiles:.4e} | "
-        curr_str += f"{tau_meanF_eff_outQuantiles:.4e} | "
-        curr_str += f"{tau_meanF_local_outQuantiles:.4e} | "
-
-        curr_str += f"{100 * nskews_x_outQuantile / nskewers_tot:.4f} % | "
-        curr_str += f"{100 * nskews_y_outQuantile / nskewers_tot:.4f} % | "
-        curr_str += f"{100 * nskews_z_outQuantile / nskewers_tot:.4f} % | --- "
+    if args.verbose and nskews_outbounds:
+        curr_str = f"--- We have {nskews_outquantiles:.0f} / {nskewers_tot:.0f} = "
+        curr_str += f"{100 * nskews_outquantiles / nskewers_tot:.0f} % skewers outside of bounds ---"
         print(curr_str)
 
     if args.verbose:
@@ -1020,13 +891,9 @@ def main():
     dvHubble_z = chSnapCosmoHead.dvHubble(OTFSkewers.dz)
 
     # initialize flux power spectrum
-    FPS_quantiles = {}
-    for nquantile in range(args.nquantiles):
-        quantile_key = f'quantile_{nquantile:.0f}'
-        FPS_quantiles[quantile_key] = {}
-        FPS_quantiles[quantile_key]['FPS_x'] = np.zeros(nFFTs[0], dtype=precision)
-        FPS_quantiles[quantile_key]['FPS_y'] = np.zeros(nFFTs[1], dtype=precision)
-        FPS_quantiles[quantile_key]['FPS_z'] = np.zeros(nFFTs[2], dtype=precision)
+    FPS_x = np.zeros(nFFTs[0], dtype=precision)
+    FPS_y = np.zeros(nFFTs[1], dtype=precision)
+    FPS_z = np.zeros(nFFTs[2], dtype=precision)
 
     # create Flux Power Spectrum object
     FPSHead_x = ChollaFluxPowerSpectrumHead(nCells[0], dvHubble_x)
@@ -1042,59 +909,31 @@ def main():
     if args.verbose:
         print("--- Found k-modes along each axis, now moving on to actually performing flux power spectrum calculation in each quantile ---")
 
-    for nquantile in range(args.nquantiles):
-        quantile_key = f'quantile_{nquantile:.0f}'
-        indx_currQuantile = indices_all_quantiles[quantile_key]
 
-        # make masks of the indices that fall within a specific axis
-        indx_x_currQuantile_mask = indx_currQuantile < (nskewers_x)
-        indx_y_currQuantile_mask = ( (nskewers_x) < indx_currQuantile) & (indx_currQuantile < (nskewers_x + nskewers_y))
-        indx_z_currQuantile_mask = ( (nskewers_x + nskewers_y) < indx_currQuantile)
+    if nskews_x_inbounds:
+        tau_local_x_inbounds = tau_local_x_inbounds.reshape((nskews_x_inbounds, nCells[0]))
+        _, calc_FPS_x = FPSHead_x.get_FPS(tau_local_x_inbounds,
+                                          flux_mean_global=meanF_local_inbounds, 
+                                          precision=precision)
+        FPS_x += calc_FPS_x
 
-        nskews_x_currQuantile = np.sum(indx_x_currQuantile_mask)
-        nskews_y_currQuantile = np.sum(indx_y_currQuantile_mask)
-        nskews_z_currQuantile = np.sum(indx_z_currQuantile_mask)
+    if nskews_y_inbounds:
+        tau_local_y_inbounds = tau_local_y_inbounds.reshape((nskews_y_inbounds, nCells[1]))
+        _, calc_FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
+                                          flux_mean_global=meanF_local_inbounds,
+                                          precision=precision)
+        FPS_y += calc_FPS_y
 
-        # apply masks to get indices in each axis
-        indx_x_currQuantile = indx_currQuantile[indx_x_currQuantile_mask]
-        indx_y_currQuantile = indx_currQuantile[indx_y_currQuantile_mask]
-        indx_z_currQuantile = indx_currQuantile[indx_z_currQuantile_mask]
-
-        # calculate the skewer id each index corresponds to
-        skewid_x_currQuantile = indx_x_currQuantile % nskewers_x
-        skewid_y_currQuantile = indx_y_currQuantile % nskewers_y
-        skewid_z_currQuantile = indx_z_currQuantile % nskewers_z
-
-        # create an array for all local optical depths along an axis
-        tau_local_x_currQuantile = tau_local_x[skewid_x_currQuantile]
-        tau_local_y_currQuantile = tau_local_y[skewid_y_currQuantile]
-        tau_local_z_currQuantile = tau_local_z[skewid_z_currQuantile]
-
-        # grab mean flux in quantile
-        flux_mean_currQuantile = meanF_local_quantiles[quantile_key]
-
-        if nskews_x_currQuantile:
-            _, FPS_currQuantile_x = FPSHead_x.get_FPS(tau_local_x_currQuantile,
-                                                      flux_mean_global=flux_mean_currQuantile, 
-                                                      precision=precision)
-            FPS_quantiles[quantile_key]['FPS_x'] += FPS_currQuantile_x
-
-        if nskews_y_currQuantile:
-            _, FPS_currQuantile_y = FPSHead_y.get_FPS(tau_local_y_currQuantile,
-                                                      flux_mean_global=flux_mean_currQuantile,
-                                                      precision=precision)
-            FPS_quantiles[quantile_key]['FPS_y'] += FPS_currQuantile_y
-
-        if nskews_z_currQuantile:    
-            _, FPS_currQuantile_z = FPSHead_z.get_FPS(tau_local_z_currQuantile,
-                                                      flux_mean_global=flux_mean_currQuantile,
-                                                      precision=precision)
-            FPS_quantiles[quantile_key][f'FPS_z'] += FPS_currQuantile_z
+    if nskews_z_inbounds:    
+        tau_local_z_inbounds = tau_local_z_inbounds.reshape((nskews_z_inbounds, nCells[2]))
+        _, calc_FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
+                                          flux_mean_global=meanF_local_inbounds,
+                                          precision=precision)
+        FPS_z += calc_FPS_z
 
     
     if args.verbose:
         print(f"--- Flux power spectrum calculation completed along each axis ! Now saving data ---")
-
 
     with h5py.File(outfile_fPath, 'a') as fObj:
         # place attributes
@@ -1121,7 +960,7 @@ def main():
             _ = fObj.attrs.create('scale_factor', scale_factor)
             _ = fObj.attrs.create('nOutput', nOutput)
 
-             # analysis info
+            # analysis info
             _ = fObj.create_dataset('k_x', data=kvals_fft_x)
             _ = fObj.create_dataset('k_y', data=kvals_fft_y)
             _ = fObj.create_dataset('k_z', data=kvals_fft_z)
@@ -1144,62 +983,27 @@ def main():
             _ = fObj.attrs.create('tau_medF_local', tau_medF_local)
             _ = fObj.attrs.create('tau_lowF_local', tau_lowF_local)
 
+        curr_nranges = fObj.attrs['nranges'].item()
+        range_key = f'range_{curr_nranges:.0f}'
+        range_group = fObj.create_group(range_key)
+        
+        _ = range_group.attrs.create('tau_min', args.optdepthlow)
+        _ = range_group.attrs.create('tau_max', args.optdepthupp)
+        _ = range_group.attrs.create('tau_mean', np.mean(tau_eff_all[tau_eff_all_inbounds_mask]))
 
-        _ = fObj.attrs.modify('nquantiles', args.nquantiles)
+        _ = range_group.attrs.create('meanF_local_inrange', meanF_local_inbounds)
+        _ = range_group.attrs.create('meanF_eff_inrange', meanF_eff_inbounds)
 
-        # flush old quantile groups
-        if outfile_exists:
-            for key in fObj.keys():
-                analysis_mode = key.split("_")[1]
-                if analysis_mode == "quantile":
-                    del fObj[key]
+        _ = range_group.attrs.create('tau_meanF_local_inrange', tau_meanF_local_inbounds)
+        _ = range_group.attrs.create('tau_meanF_eff_inrange', tau_meanF_eff_inbounds)
 
-        # flux power spectra info
-        for nquantile in range(args.nquantiles):
-            quantile_key = f'quantile_{nquantile:.0f}'
-            indx_currQuantile = indices_all_quantiles[quantile_key]
-            FPS_currQuantile = FPS_quantiles[quantile_key]
+        _ = range_group.create_dataset('indices', data=indx_all_inbounds)
+        _ = range_group.create_dataset('FPS_x', data=FPS_x)
+        _ = range_group.create_dataset('FPS_y', data=FPS_y)
+        _ = range_group.create_dataset('FPS_z', data=FPS_z)
+        
+        _ = fObj.attrs.modify('nranges', int(curr_nranges+1))
 
-            # grab upper, lower, and mean effective optical depths
-            tau_eff_currQuantile_min = tau_eff_all[indx_currQuantile[0]]
-            tau_eff_currQuantile_max = tau_eff_all[indx_currQuantile[-1]]
-            tau_eff_currQuantile_mean = mean_tau_eff_quantiles[quantile_key]
-
-            # grab mean local optical depth
-            tau_local_currQuantile_mean = mean_tau_local_quantiles[quantile_key]
-
-            # grab mean effective and local fluxes
-            meanF_local_currQuantile = meanF_local_quantiles[quantile_key]
-            meanF_eff_currQuantile = meanF_eff_quantiles[quantile_key]
-
-            # grab optical depth from mean fluxes
-            tau_meanF_local_currQuantile = tau_meanF_local_quantiles[quantile_key]
-            tau_meanF_eff_currQuantile = tau_meanF_eff_quantiles[quantile_key]
-
-            # grab flux power spectra
-            FPS_x = FPS_currQuantile['FPS_x']
-            FPS_y = FPS_currQuantile['FPS_y']
-            FPS_z = FPS_currQuantile['FPS_z']
-
-            # create group and add data
-            quantile_groupkey = "FluxPowerSpectrum_" + quantile_key
-            quantile_group = fObj.create_group(quantile_groupkey)
-
-            _ = quantile_group.attrs.create('tau_min', tau_eff_currQuantile_min)
-            _ = quantile_group.attrs.create('tau_max', tau_eff_currQuantile_max)
-            _ = quantile_group.attrs.create('tau_mean', tau_eff_currQuantile_mean)
-
-            _ = quantile_group.attrs.create('tau_local_mean', tau_local_currQuantile_mean)
-            _ = quantile_group.attrs.create('meanF_eff', meanF_eff_currQuantile)
-            _ = quantile_group.attrs.create('meanF_local', meanF_local_currQuantile) # used for FFT
-            
-            _ = quantile_group.attrs.create('tau_meanF_eff', tau_meanF_eff_currQuantile)
-            _ = quantile_group.attrs.create('tau_meanF_local', tau_meanF_local_currQuantile)
-
-            _ = quantile_group.create_dataset('indices', data=indx_currQuantile)
-            _ = quantile_group.create_dataset('FPS_x', data=FPS_x)
-            _ = quantile_group.create_dataset('FPS_y', data=FPS_y)
-            _ = quantile_group.create_dataset('FPS_z', data=FPS_z)
 
 
     if args.verbose:

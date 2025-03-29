@@ -321,6 +321,12 @@ def main():
     with h5py.File(analysis_fPath, 'r+') as fObj:
         nQuantiles = fObj.attrs.get('nquantiles')
 
+        # flush out old dlogk analysis
+        dlogk_analysis_alive = 'dlogk' in fObj.attrs
+        if dlogk_analysis_alive:
+            _ = fObj.attrs.pop('dlogk')
+            del fObj['k_edges_dlogk']
+
         # write attr
         _ = fObj.attrs.create('dlogk', args.dlogk)
 
@@ -352,7 +358,7 @@ def main():
             FPS_currQuantile /= 3.
 
             # delete data set if it is alive
-            if 'FPS_dlogk' in quantile_group.keys():
+            if dlogk_analysis_alive:
                 del quantile_group['FPS_dlogk']
         
             # write data
