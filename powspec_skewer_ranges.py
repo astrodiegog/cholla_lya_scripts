@@ -71,7 +71,7 @@ def create_parser():
     '''
 
     parser = argparse.ArgumentParser(
-        description="Compute power spectra in nquantiles bins")
+        description="Compute power spectra in range bin")
 
     parser.add_argument("skewfname", help='Cholla skewer output file name', type=str)
 
