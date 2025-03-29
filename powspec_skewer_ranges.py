@@ -867,15 +867,15 @@ def main():
     tau_meanF_eff_inbounds = -np.log(meanF_eff_inbounds)
 
     if args.verbose:
-        curr_str = f'--- Mean local flux (inbounds) : {meanF_local_inbounds:.4e} / tau : {teau_meanF_local_inbounds:.4e} ---'
-        curr_str = f'--- Mean effective flux (inbounds) : {meanF_eff_inbounds:.4e} / tau : {teau_meanF_eff_inbounds:.4e} ---'
+        curr_str = f'--- Mean local flux (inbounds) : {meanF_local_inbounds:.4e} / tau : {tau_meanF_local_inbounds:.4e} ---'
+        curr_str = f'--- Mean effective flux (inbounds) : {meanF_eff_inbounds:.4e} / tau : {tau_meanF_eff_inbounds:.4e} ---'
         print(curr_str)
 
     # find the index of the skewers that do not fall within the input range & print its info
     indx_all_outbounds = np.argwhere(~tau_eff_all_inbounds_mask).flatten()
     nskews_outbounds = np.sum(~tau_eff_all_inbounds_mask)
 
-    if args.verbose and nskews_outQuantiles:
+    if args.verbose and nskews_outbounds:
         curr_str = f"--- We have {nskews_outquantiles:.0f} / {nskewers_tot:.0f} = "
         curr_str += f"{100 * nskews_outquantiles / nskewers_tot:.0f} % skewers outside of bounds ---"
         print(curr_str)
