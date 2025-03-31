@@ -868,8 +868,8 @@ def init_taucalc(OTFSkewers, restart = False, verbose=False):
         1. (attribute) progress for optical depth
         2. (dataset) boolean mask whether optical depth has been calculated for 
             a specific skewer
-        3. (dataset) median of local optical depths for a skewer
-    
+        3. (dataset) optical depth of mean flux for a skewer
+ 
     Current implementation assumes the same nStride along each axis
 
     Args:
@@ -968,7 +968,7 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
 
 def main():
     '''
-    Append the array of median optical depths for a skewer file
+    Append the array of optical depth of mean flux for a skewer file
     '''
 
     # Create parser
