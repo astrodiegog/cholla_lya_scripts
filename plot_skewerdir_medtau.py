@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-This script will plot the effective optical depth distribution as a function
-    of redshift. It will take in a skewer directory and a list of output
-    strings and make a 2D histogram.
+This script will plot the median optical depth distribution alons a skewer 
+    as a function of redshift. It will take in a skewer directory and a list 
+    of output strings and make a 2D histogram.
 
 Usage for directory named skewers:
-    $ python3 plot_skewerdir_efftau.py skewers/ -v 
+    $ python3 plot_skewerdir_medtau.py skewers/ -v 
 """
 import argparse
 from pathlib import Path
@@ -34,7 +34,7 @@ def create_parser():
     '''
 
     parser = argparse.ArgumentParser(
-        description="Plot the distribution of effective optical depths")
+        description="Plot the distribution of median optical depth along skewer")
 
     parser.add_argument("skewdirname", help='Cholla skewer output directory name', type=str)
 
@@ -340,7 +340,7 @@ class ChollaOnTheFlySkewers:
 
 def main():
     '''
-    Plot the effective optical depth as a function of redshift
+    Plot the median optical depth along a skewer as a function of redshift
     '''
 
     # Create parser
@@ -363,7 +363,7 @@ def main():
     if args.fname:
         fName = args.fname
     else:
-        fName = f'efftau_distr.png'
+        fName = f'medtau_distr.png'
     img_fPath = Path(fName)
 
     # define where file name will be placed
@@ -407,7 +407,7 @@ def main():
         l_tau_min, l_tau_max = -4., 8.
 
     # make sure required keys are populated
-    optdeptheff_key = 'taucalc_eff'
+    tau_local_key = "taucalc_local"
 
     # initialize redshift bins
     redshift_bins = np.zeros(nOutputs+1, dtype=np.float64)
@@ -416,11 +416,11 @@ def main():
     tau_nbins = 250
     l_tau_bins = np.linspace(l_tau_min, l_tau_max, tau_nbins)
 
-    hist_eff_ltau = np.zeros((tau_nbins-1, nOutputs))
-    tau_eff_mean_arr = np.zeros(nOutputs, dtype=precision)
-    tau_eff_18perc_arr = np.zeros(nOutputs, dtype=precision)
-    tau_eff_50perc_arr = np.zeros(nOutputs, dtype=precision)
-    tau_eff_84perc_arr = np.zeros(nOutputs, dtype=precision)
+    hist_med_ltau = np.zeros((tau_nbins-1, nOutputs))
+    tau_med_mean_arr = np.zeros(nOutputs, dtype=precision)
+    tau_med_18perc_arr = np.zeros(nOutputs, dtype=precision)
+    tau_med_50perc_arr = np.zeros(nOutputs, dtype=precision)
+    tau_med_84perc_arr = np.zeros(nOutputs, dtype=precision)
 
     n = 0
     for fPath in skewer_dirPath.iterdir():
@@ -441,54 +441,58 @@ def main():
         OTFSkewers_y = OTFSkewers.get_skewersy_obj()
         OTFSkewers_z = OTFSkewers.get_skewersz_obj()
 
-        assert OTFSkewers_x.check_datakey(optdeptheff_key)
-        assert OTFSkewers_y.check_datakey(optdeptheff_key)
-        assert OTFSkewers_z.check_datakey(optdeptheff_key)      
+        assert OTFSkewers_x.check_datakey(tau_local_key)
+        assert OTFSkewers_y.check_datakey(tau_local_key)
+        assert OTFSkewers_z.check_datakey(tau_local_key)      
 
         if args.verbose:
             print(f"--- We have the data, now grabbing and histograming ---")
 
         redshift_bins[n] = OTFSkewers.current_z
 
-        # grab effective optical depth
-        tau_eff_x = OTFSkewers_x.get_skeweralldata(optdeptheff_key, dtype=precision)
-        tau_eff_y = OTFSkewers_y.get_skeweralldata(optdeptheff_key, dtype=precision)
-        tau_eff_z = OTFSkewers_z.get_skeweralldata(optdeptheff_key, dtype=precision)
+        # grab local optical depth
+        tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
+        tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
+        tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
 
-        nskews_x = tau_eff_x.size
-        nskews_y = tau_eff_y.size
-        nskews_z = tau_eff_z.size
+        tau_med_x = np.median(tau_local_x, axis=1)
+        tau_med_y = np.median(tau_local_y, axis=1)
+        tau_med_z = np.median(tau_local_z, axis=1)
+
+        nskews_x = tau_med_x.size
+        nskews_y = tau_med_y.size
+        nskews_z = tau_med_z.size
         totnskews = nskews_x + nskews_y + nskews_z
 
         # place all optical depths into one array
-        tau_eff_all = np.zeros(totnskews, dtype=precision)
-        tau_eff_all[ : (nskews_x)] = tau_eff_x
-        tau_eff_all[ (nskews_x) : (nskews_x + nskews_y)] = tau_eff_y
-        tau_eff_all[ (nskews_x + nskews_y) : ] = tau_eff_z
+        tau_med_all = np.zeros(totnskews, dtype=precision)
+        tau_med_all[ : (nskews_x)] = tau_med_x
+        tau_med_all[ (nskews_x) : (nskews_x + nskews_y)] = tau_med_y
+        tau_med_all[ (nskews_x + nskews_y) : ] = tau_med_z
 
         # calculate mean, 16-50-84 percentiles
-        tau_eff_mean_arr[n] = np.mean(tau_eff_all)
-        tau_eff_18perc_arr[n] = np.percentile(tau_eff_all, 18)
-        tau_eff_50perc_arr[n] = np.percentile(tau_eff_all, 50)
-        tau_eff_84perc_arr[n] = np.percentile(tau_eff_all, 84)
+        tau_med_mean_arr[n] = np.mean(tau_med_all)
+        tau_med_18perc_arr[n] = np.percentile(tau_med_all, 18)
+        tau_med_50perc_arr[n] = np.percentile(tau_med_all, 50)
+        tau_med_84perc_arr[n] = np.percentile(tau_med_all, 84)
 
         # histogram it !
-        l_tau_hist_all, _ = np.histogram(np.log10(tau_eff_all), bins=l_tau_bins)
+        l_tau_hist_all, _ = np.histogram(np.log10(tau_med_all), bins=l_tau_bins)
 
         # place onto global array
-        hist_eff_ltau[:,n] += l_tau_hist_all
+        hist_med_ltau[:,n] += l_tau_hist_all
 
         # normalize at each redshift bin
-        hist_eff_ltau[:,n] = hist_eff_ltau[:,n] / totnskews
+        hist_med_ltau[:,n] = hist_med_ltau[:,n] / totnskews
         n += 1
     
     indices_redshiftsort = np.argsort(redshift_bins)
     redshift_bins_sorted = redshift_bins[indices_redshiftsort]
-    hist_eff_ltau_sorted = hist_eff_ltau[:, indices_redshiftsort[1:]] # first index will be zero
-    tau_eff_mean_arr_sorted = tau_eff_mean_arr[indices_redshiftsort[1:]]
-    tau_eff_18perc_arr_sorted = tau_eff_18perc_arr[indices_redshiftsort[1:]]
-    tau_eff_50perc_arr_sorted = tau_eff_50perc_arr[indices_redshiftsort[1:]]
-    tau_eff_84perc_arr_sorted = tau_eff_84perc_arr[indices_redshiftsort[1:]]
+    hist_med_ltau_sorted = hist_med_ltau[:, indices_redshiftsort[1:]] # first index will be zero
+    tau_med_mean_arr_sorted = tau_med_mean_arr[indices_redshiftsort[1:]]
+    tau_med_18perc_arr_sorted = tau_med_18perc_arr[indices_redshiftsort[1:]]
+    tau_med_50perc_arr_sorted = tau_med_50perc_arr[indices_redshiftsort[1:]]
+    tau_med_84perc_arr_sorted = tau_med_84perc_arr[indices_redshiftsort[1:]]
 
     redshift_center_sorted = (redshift_bins_sorted[1:] + redshift_bins_sorted[:-1]) / 2.
 
@@ -503,14 +507,14 @@ def main():
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
     im0 = ax.pcolormesh(redshift_bins_sorted, 10**(l_tau_bins), 
-                        np.log10(hist_eff_ltau_sorted))
-    _ = ax.plot(redshift_center_sorted, tau_eff_mean_arr_sorted, ls='--', 
+                        np.log10(hist_med_ltau_sorted))
+    _ = ax.plot(redshift_center_sorted, tau_med_mean_arr_sorted, ls='--', 
                 label=r'$\rm{Mean}$', marker='.', markersize=10, zorder=3)
-    _ = ax.plot(redshift_center_sorted, tau_eff_18perc_arr_sorted, ls='-', 
+    _ = ax.plot(redshift_center_sorted, tau_med_18perc_arr_sorted, ls='-', 
                 label=r'$18-50-84 \%$', c='k', marker='.', markersize=10)
-    _ = ax.plot(redshift_center_sorted, tau_eff_50perc_arr_sorted, ls='-', 
+    _ = ax.plot(redshift_center_sorted, tau_med_50perc_arr_sorted, ls='-', 
                 c='k', marker='.', markersize=10)
-    _ = ax.plot(redshift_center_sorted, tau_eff_84perc_arr_sorted, ls='-', 
+    _ = ax.plot(redshift_center_sorted, tau_med_84perc_arr_sorted, ls='-', 
                 c='k', marker='.', markersize=10)
 
     _ = ax.set_xlim(z_low, z_hi)
