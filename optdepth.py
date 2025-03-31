@@ -953,11 +953,12 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, precision=np.float64, verbose=False):
             temp = OTFSkewer.get_temperature(precision)
 
             taus = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp)
+            fluxes = np.exp(- taus)
+            meanF = np.mean(fluxes)
 
             # update attr, bool arr, and tau arrs
             fObj[skew_key]['taucalc_bool'][nSkewerID] = True
-            
-            fObj[skew_key]['taucalc_eff'][nSkewerID] = np.median(taus)
+            fObj[skew_key]['taucalc_eff'][nSkewerID] = -1. * np.log(meanF)
             fObj[skew_key]['taucalc_local'][nSkewerID] = taus
 
     if verbose:
