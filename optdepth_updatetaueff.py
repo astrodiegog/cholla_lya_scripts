@@ -444,12 +444,15 @@ def main():
 
     t_end = MPI.Wtime()
 
+    updatetime_arr = np.zeros(size, dtype=np.float64)
+    updatetime_arr[rank] = t_end - t_start
 
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
         if args.verbose:
             print(f"--- {rank_idstr} : Took {t_end - t_start:.4e} secs for entire calculation ---")
+        
+        fObj.create_dataset(f'updatetime_{size:.0f}_nprocs', data=updatetime_arr)
 
-        fObj[f'updatetime_{size:.0f}_nprocs'][rank] = t_end - t_start
 
         
 
