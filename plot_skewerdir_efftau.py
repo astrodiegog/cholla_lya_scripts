@@ -441,9 +441,9 @@ def main():
         OTFSkewers_y = OTFSkewers.get_skewersy_obj()
         OTFSkewers_z = OTFSkewers.get_skewersz_obj()
 
-        assert OTFSkewers_x.check_datakey(tau_local_key)
-        assert OTFSkewers_y.check_datakey(tau_local_key)
-        assert OTFSkewers_z.check_datakey(tau_local_key)      
+        assert OTFSkewers_x.check_datakey(tau_eff_key)
+        assert OTFSkewers_y.check_datakey(tau_eff_key)
+        assert OTFSkewers_z.check_datakey(tau_eff_key)      
 
         if args.verbose:
             print(f"--- We have the data, now grabbing and histograming ---")
@@ -503,14 +503,14 @@ def main():
 
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
     im0 = ax.pcolormesh(redshift_bins_sorted, 10**(l_tau_bins), 
-                        np.log10(hist_meanF_ltau_sorted))
-    _ = ax.plot(redshift_center_sorted, tau_meanF_mean_arr_sorted, ls='--', 
+                        np.log10(hist_eff_ltau_sorted))
+    _ = ax.plot(redshift_center_sorted, tau_eff_mean_arr_sorted, ls='--', 
                 label=r'$\rm{Mean}$', marker='.', markersize=10, zorder=3)
-    _ = ax.plot(redshift_center_sorted, tau_meanF_18perc_arr_sorted, ls='-', 
+    _ = ax.plot(redshift_center_sorted, tau_eff_18perc_arr_sorted, ls='-', 
                 label=r'$18-50-84 \%$', c='k', marker='.', markersize=10)
-    _ = ax.plot(redshift_center_sorted, tau_meanF_50perc_arr_sorted, ls='-', 
+    _ = ax.plot(redshift_center_sorted, tau_eff_50perc_arr_sorted, ls='-', 
                 c='k', marker='.', markersize=10)
-    _ = ax.plot(redshift_center_sorted, tau_meanF_84perc_arr_sorted, ls='-', 
+    _ = ax.plot(redshift_center_sorted, tau_eff_84perc_arr_sorted, ls='-', 
                 c='k', marker='.', markersize=10)
 
     _ = ax.set_xlim(z_low, z_hi)
