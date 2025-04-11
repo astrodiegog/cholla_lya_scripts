@@ -91,6 +91,7 @@ def main():
     # create grouped FPS for each quantile
     with h5py.File(analysis_fPath, 'r+') as fObj:
         nQuantiles = fObj.attrs.get('nquantiles')
+        nRanges = fObj.attrs.get('nranges')
 
         # flush out old uniquek analysis
         uniquek_analysis_alive = 'k_uniq' in fObj.keys()
@@ -122,6 +123,27 @@ def main():
             _ = quantile_group.create_dataset('FPS_uniq', data=FPS_currQuantile)
     
 
+        for nRange in range(nRanges):
+            currRange_key = f'FluxPowerSpectrum_range_{nRange:.0f}' 
+            range_group = fObj[currRange_key]
+
+            # grab FPS arrays
+            FPS_x = range_group.get('FPS_x')[:]
+            FPS_y = range_group.get('FPS_y')[:]
+            FPS_z = range_group.get('FPS_z')[:]
+
+            FPS_currRange = np.zeros_like(k_uniq)
+            _ = np.add.at(FPS_currRange, k_uniq_inv[ : (k_x.size)], FPS_x)
+            _ = np.add.at(FPS_currRange, k_uniq_inv[(k_x.size) : (k_x.size + k_y.size)], FPS_y)
+            _ = np.add.at(FPS_currRange, k_uniq_inv[(k_x.size + k_y.size) : ], FPS_z)
+            FPS_currRange /= k_uniq_cts
+
+            # delete data set if it is alive
+            if uniquek_analysis_alive:
+                del range_group['FPS_uniq']
+
+            # write data
+            _ = range_group.create_dataset('FPS_uniq', data=FPS_currRange)
 
     if args.verbose:
         print("--- Done ! ---")

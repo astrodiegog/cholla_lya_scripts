@@ -364,6 +364,35 @@ def main():
             # write data
             _ = quantile_group.create_dataset('FPS_dlogk', data=FPS_currQuantile)
     
+        for nRange in range(nRanges):
+            currRange_key = f'FluxPowerSpectrum_range_{nRange:.0f}'
+            range_group = fObj[currRange_key]
+
+            # grab FPS arrays
+            FPS_x = range_group.get('FPS_x')[:]
+            FPS_y = range_group.get('FPS_y')[:]
+            FPS_z = range_group.get('FPS_z')[:]
+
+            # create FPS array
+            FPS_currRange = np.zeros(n_bins, dtype=precision)
+            
+            # add contribution from each FPS axis, avg by number FFT bins in kedge
+            _ = np.add.at(FPS_currRange, fft_binids_x[1:], FPS_x[1:])
+            FPS_currRange /= fft_nbins_kedges_x
+            
+            _ = np.add.at(FPS_currRange, fft_binids_y[1:], FPS_y[1:])
+            FPS_currRange /= fft_nbins_kedges_y
+
+            _ = np.add.at(FPS_currRange, fft_binids_z[1:], FPS_z[1:])
+            FPS_currRange /= fft_nbins_kedges_z
+
+            # avg by 3 for each axis
+            FPS_currRange /= 3.
+
+            # delete data set if it is alive
+            if dlogk_analysis_alive:
+                del range_group['FPS_dlogk']
+
 
 
     if args.verbose:
