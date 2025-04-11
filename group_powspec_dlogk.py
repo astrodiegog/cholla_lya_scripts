@@ -394,6 +394,9 @@ def main():
             if dlogk_analysis_alive:
                 del range_group['FPS_dlogk']
 
+            # write data
+            _ = range_group.create_dataset('FPS_dlogk', data=FPS_currQuantile)
+
 
 
     if args.verbose:
