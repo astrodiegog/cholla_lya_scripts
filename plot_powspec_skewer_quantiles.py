@@ -107,13 +107,25 @@ def main():
     analysis_fPath = Path(args.FPS_optdepthbin_fname).resolve()
     assert analysis_fPath.is_file()
 
+    # define file name of plot
+    if args.fname:
+        fName = args.fname
+    else:
+        if args.dlogk:
+            fName = f"{nOutput:.0f}_FluxPowerSpectra_Quantiles_dlogK.png"
+        elif args.unique:
+            fName = f"{nOutput:.0f}_FluxPowerSpectra_Quantiles_UniqueK.png"
+    img_fPath = Path(fName)
+
+    # define where file name will be placed
     if args.outdir:
         outdir_dirPath = Path(args.outdir)
         outdir_dirPath = outdir_dirPath.resolve()
         assert outdir_dirPath.is_dir()
     else:
-        # write data to where skewer directory resides
+        # write data to where FPS opt depth bin analysis file resides
         outdir_dirPath = analysis_fPath.parent.resolve()
+    img_fPath = outdir_dirPath / img_fPath
 
 
     # initialize info for plotting
@@ -278,13 +290,6 @@ def main():
 
     # add background grid
     _ = ax.grid(which='both', axis='both', alpha=0.3)
-
-    # save figure
-    fName = f"{nOutput:.0f}_FluxPowerSpectra_optdepthbin.png"
-    img_fPath = Path(fName)
-    img_fPath = outdir_dirPath / img_fPath
-    if args.verbose:
-        print(f"--- Saving Flux Power Spectra plot {img_fPath} ---")
 
     _ = fig.savefig(img_fPath, dpi=256, bbox_inches = "tight")
     plt.close(fig)
