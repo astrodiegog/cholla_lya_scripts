@@ -90,14 +90,6 @@ def main():
     analysis_fPath = Path(args.analysis_fname).resolve()
     assert analysis_fPath.is_file()
 
-    if args.outdir:
-        outdir_dirPath = Path(args.outdir)
-        outdir_dirPath = outdir_dirPath.resolve()
-        assert outdir_dirPath.is_dir()
-    else:
-        # write data to where FPS opt depth bin analysis file resides
-        outdir_dirPath = FPSoptdepthbin_fPath.parent.resolve()
-
     # get power spectra from analysis path
     Pk_analysis = np.array([])
     current_z = 0.
@@ -184,17 +176,32 @@ def main():
     # add background grid
     _ = ax.grid(which='both', axis='both', alpha=0.3)
 
-    # save figure
-    if args.logspace:
-        fName = f"{nOutput:.0f}_FluxPowerSpectra_LogDiff.png"
+    # define file name of plot
+    if args.fname:
+        fName = args.fname
     else:
-        fName = f"{nOutput:.0f}_FluxPowerSpectra_Diff.png"
-
+        if args.logspace:
+            fName = f"{nOutput:.0f}_FluxPowerSpectra_LogDiff.png"
+        else:
+            fName = f"{nOutput:.0f}_FluxPowerSpectra_Diff.png"
     img_fPath = Path(fName)
+
+    # define where file name will be placed
+    if args.outdir:
+        outdir_dirPath = Path(args.outdir)
+        outdir_dirPath = outdir_dirPath.resolve()
+        assert outdir_dirPath.is_dir()
+    else:
+        # write data to where FPS opt depth bin analysis file resides
+        outdir_dirPath = FPSoptdepthbin_fPath.parent.resolve()
     img_fPath = outdir_dirPath / img_fPath
 
     if args.verbose:
-        print(f"--- Placing plot at {img_fPath} ---")
+        if args.fname:
+            print(f"--- We are saving the plot with name and path : {img_fPath} ---")
+        else:
+            print(f"--- No output file name specified, so it will be placed as : {img_fPath} ---")
+
 
     _ = fig.savefig(img_fPath, dpi=256, bbox_inches = "tight")
     plt.close(fig)
