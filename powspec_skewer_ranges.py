@@ -979,8 +979,8 @@ def main():
 
         
         curr_nranges = fObj.attrs['nranges'].item()
-        range_key = f'range_{curr_nranges:.0f}'
-        range_group = fObj.create_group(range_key)
+        range_groupkey = "FluxPowerSpectrum_" + f'range_{curr_nranges:.0f}'
+        range_group = fObj.create_group(range_groupkey)
         
         _ = range_group.attrs.create('tau_min', args.optdepthlow)
         _ = range_group.attrs.create('tau_max', args.optdepthupp)
