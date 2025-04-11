@@ -320,6 +320,7 @@ def main():
     # create grouped FPS for each quantile
     with h5py.File(analysis_fPath, 'r+') as fObj:
         nQuantiles = fObj.attrs.get('nquantiles')
+        nRanges = fObj.attrs.get('nranges')
 
         # flush out old dlogk analysis
         dlogk_analysis_alive = 'dlogk' in fObj.attrs
