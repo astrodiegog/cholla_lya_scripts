@@ -116,7 +116,7 @@ def main():
             FPS_currQuantile /= k_uniq_cts
 
             # delete data set if it is alive
-            if uniquek_analysis_alive:
+            if 'FPS_uniq' in quantile_group.keys():
                 del quantile_group['FPS_uniq']
         
             # write data
@@ -139,7 +139,7 @@ def main():
             FPS_currRange /= k_uniq_cts
 
             # delete data set if it is alive
-            if uniquek_analysis_alive:
+            if 'FPS_uniq' in range_group.keys():
                 del range_group['FPS_uniq']
 
             # write data

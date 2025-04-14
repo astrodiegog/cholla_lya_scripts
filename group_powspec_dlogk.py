@@ -359,7 +359,7 @@ def main():
             FPS_currQuantile /= 3.
 
             # delete data set if it is alive
-            if dlogk_analysis_alive:
+            if 'FPS_dlogk' in quantile_group.keys():
                 del quantile_group['FPS_dlogk']
         
             # write data
@@ -391,7 +391,7 @@ def main():
             FPS_currRange /= 3.
 
             # delete data set if it is alive
-            if dlogk_analysis_alive:
+            if 'FPS_dlogk' in range_group.keys():
                 del range_group['FPS_dlogk']
 
             # write data
