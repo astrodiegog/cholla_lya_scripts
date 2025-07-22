@@ -771,6 +771,17 @@ def main():
         tau_medF_eff = -1. * np.log(medF_eff)
         tau_lowF_eff = -1. * np.log(lowF_eff)
 
+        if args.verbose:
+            global_string = f'--- Mean effective optical depth : {tau_eff_mean:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of effective optical depth : {tau_eff_low:.4e} / {tau_eff_med:.4e} / {tau_eff_upp:.4e} --- \n'
+
+            global_string += f'--- Mean effective flux : {meanF_eff:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of effective flux : {lowF_eff:.4e} / {medF_eff:.4e} / {uppF_eff:.4e} --- \n'
+
+            global_string += f'--- Optical depth of Mean effective flux : {tau_meanF_eff:.6e} --- \n'
+            global_string += f'--- --- Optical depth of 18/50/84 effective flux: {tau_lowF_eff:.4e} / {tau_medF_eff:.4e} / {tau_uppF_eff:.4e} --- \n'
+
+
     # create a mask of all effective optical depths within our range
     tau_eff_all_inbounds_mask = (tau_eff_all > args.optdepthlow) & (tau_eff_all < args.optdepthupp)
     nskewers_inbounds = np.sum(tau_eff_all_inbounds_mask)
@@ -833,6 +844,15 @@ def main():
         tau_medF_local = - np.log(medF_local)
         tau_lowF_local = - np.log(lowF_local)
 
+        if args.verbose:
+            global_string += f'--- Mean local flux : {meanF_local:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of local flux : {lowF_local:.4e} / {medF_eff:.4e} / {uppF_eff:.4e} --- \n'
+
+            global_string += f'--- Optical depth of Mean local flux : {tau_meanF_local:.4e} --- \n'
+            global_string += f'--- --- Optical depth of 18/50/84 local flux : {tau_lowF_local:.4e} / {tau_medF_local:.4e} / {tau_uppF_local:.4e} --- \n'
+
+            print(global_string)
+
     # create an array for all local optical depths along an axis
     tau_local_x_inbounds = tau_local_x[skewid_x_inbounds].flatten()
     tau_local_y_inbounds = tau_local_y[skewid_y_inbounds].flatten()
@@ -870,8 +890,8 @@ def main():
     nskews_outbounds = np.sum(~tau_eff_all_inbounds_mask)
 
     if args.verbose and nskews_outbounds:
-        curr_str = f"--- We have {nskews_outquantiles:.0f} / {nskewers_tot:.0f} = "
-        curr_str += f"{100 * nskews_outquantiles / nskewers_tot:.0f} % skewers outside of bounds ---"
+        curr_str = f"--- We have {nskews_outbounds:.0f} / {nskewers_tot:.0f} = "
+        curr_str += f"{100 * nskews_outbounds / nskewers_tot:.0f} % skewers outside of bounds ---"
         print(curr_str)
 
     if args.verbose:
@@ -901,27 +921,27 @@ def main():
         kvals_fft_z = FPSHead_z.get_kvals_fft(dtype=precision)
 
     if args.verbose:
-        print("--- Found k-modes along each axis, now moving on to actually performing flux power spectrum calculation in each quantile ---")
+        print("--- Found k-modes along each axis, now moving on to actually performing flux power spectrum calculation ---")
 
 
     if nskews_x_inbounds:
         tau_local_x_inbounds = tau_local_x_inbounds.reshape((nskews_x_inbounds, nCells[0]))
         _, calc_FPS_x = FPSHead_x.get_FPS(tau_local_x_inbounds,
-                                          flux_mean_global=meanF_local_inbounds, 
+                                          flux_mean_global=meanF_eff_inbounds, 
                                           precision=precision)
         FPS_x += calc_FPS_x
 
     if nskews_y_inbounds:
         tau_local_y_inbounds = tau_local_y_inbounds.reshape((nskews_y_inbounds, nCells[1]))
         _, calc_FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
-                                          flux_mean_global=meanF_local_inbounds,
+                                          flux_mean_global=meanF_eff_inbounds,
                                           precision=precision)
         FPS_y += calc_FPS_y
 
     if nskews_z_inbounds:    
         tau_local_z_inbounds = tau_local_z_inbounds.reshape((nskews_z_inbounds, nCells[2]))
         _, calc_FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
-                                          flux_mean_global=meanF_local_inbounds,
+                                          flux_mean_global=meanF_eff_inbounds,
                                           precision=precision)
         FPS_z += calc_FPS_z
 
@@ -979,6 +999,7 @@ def main():
 
         
         curr_nranges = fObj.attrs['nranges'].item()
+
         range_groupkey = "FluxPowerSpectrum_" + f'range_{curr_nranges:.0f}'
         range_group = fObj.create_group(range_groupkey)
         
@@ -996,7 +1017,7 @@ def main():
         _ = range_group.create_dataset('FPS_x', data=FPS_x)
         _ = range_group.create_dataset('FPS_y', data=FPS_y)
         _ = range_group.create_dataset('FPS_z', data=FPS_z)
-        
+
         _ = fObj.attrs.modify('nranges', int(curr_nranges+1))
 
 
