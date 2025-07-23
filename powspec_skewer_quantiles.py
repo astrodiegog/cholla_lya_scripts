@@ -43,6 +43,7 @@ Usage for 10 quantiles bounded by optical depths 0.001 and 100.0:
     $ python3 powspec_skewer_quantiles.py 0_skewers.h5 10 0.001 100.0 -v
 
     the output file will have the name 0_fluxpowerspectrum_optdepthbin.h5
+
 """
 
 import argparse
@@ -763,26 +764,26 @@ def main():
         fluxes_eff_all = np.exp(-1. * tau_eff_all)
 
         # calculate mean and 18-50-84 percentiles of effective flux
-        meanF_eff = np.mean(fluxes_eff_all)
-        uppF_eff = np.percentile(fluxes_eff_all, 84)
-        medF_eff = np.percentile(fluxes_eff_all, 50)
-        lowF_eff = np.percentile(fluxes_eff_all, 18)
+        flux_eff_mean = np.mean(fluxes_eff_all)
+        flux_eff_upp = np.percentile(fluxes_eff_all, 84)
+        flux_eff_med = np.percentile(fluxes_eff_all, 50)
+        flux_eff_low = np.percentile(fluxes_eff_all, 18)
 
         # calculate associated optical depth
-        tau_meanF_eff = -1. * np.log(meanF_eff)
-        tau_uppF_eff = -1. * np.log(uppF_eff)
-        tau_medF_eff = -1. * np.log(medF_eff)
-        tau_lowF_eff = -1. * np.log(lowF_eff)
+        tau_mean_flux_eff = -1. * np.log(flux_eff_mean)
+        tau_upp_flux_eff = -1. * np.log(flux_eff_upp)
+        tau_med_flux_eff = -1. * np.log(flux_eff_med)
+        tau_low_flux_eff = -1. * np.log(flux_eff_low)
 
         if args.verbose:
             global_string = f'--- Mean effective optical depth : {tau_eff_mean:.4e} --- \n'
             global_string += f'--- --- 18/50/84 of effective optical depth : {tau_eff_low:.4e} / {tau_eff_med:.4e} / {tau_eff_upp:.4e} --- \n'
 
-            global_string += f'--- Mean effective flux : {meanF_eff:.4e} --- \n'
-            global_string += f'--- --- 18/50/84 of effective flux : {lowF_eff:.4e} / {medF_eff:.4e} / {uppF_eff:.4e} --- \n'
+            global_string += f'--- Mean effective flux : {flux_eff_mean:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of effective flux : {flux_eff_low:.4e} / {flux_eff_med:.4e} / {flux_eff_upp:.4e} --- \n'
 
-            global_string += f'--- Optical depth of Mean effective flux : {tau_meanF_eff:.4e} --- \n'
-            global_string += f'--- --- Optical depth of 18/50/84 effective flux: {tau_lowF_eff:.4e} / {tau_medF_eff:.4e} / {tau_uppF_eff:.4e} --- \n'
+            global_string += f'--- Optical depth of Mean effective flux : {tau_mean_flux_eff:.4e} --- \n'
+            global_string += f'--- --- Optical depth of 18/50/84 effective flux: {tau_low_flux_eff:.4e} / {tau_med_flux_eff:.4e} / {tau_upp_flux_eff:.4e} --- \n'
 
 
     # create a mask of all effective optical depths within our range
@@ -819,21 +820,65 @@ def main():
     mean_tau_local_quantiles, mean_tau_eff_quantiles = {}, {}
 
     # initialize dict for the mean flux from effective and local optical depth in each quantile
-    meanF_local_quantiles, meanF_eff_quantiles = {}, {}
+    mean_flux_local_quantiles, mean_flux_eff_quantiles = {}, {}
+    med_flux_local_quantiles, med_flux_eff_quantiles = {}, {}
 
     # initialize dict optical depth from mean effective and local flux
-    tau_meanF_local_quantiles, tau_meanF_eff_quantiles = {}, {}
+    tau_mean_flux_local_quantiles, tau_mean_flux_eff_quantiles = {}, {}
+    tau_med_flux_local_quantiles, tau_med_flux_eff_quantiles = {}, {}
+
+    # save the local optical depths
+    tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
+    tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
+    tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
+
+    if not outfile_exists:
+        # group the local optical depths
+        nCells_x = int(nskewers_x * nCells[0])
+        nCells_y = int(nskewers_y * nCells[1])
+        nCells_z = int(nskewers_z * nCells[2])
+        tau_local_all = np.zeros((nCells_x + nCells_y + nCells_z), dtype=precision)
+        tau_local_all[ : (nCells_x) ] = tau_local_x.flatten()
+        tau_local_all[ (nCells_x) : (nCells_x + nCells_y)] = tau_local_y.flatten()
+        tau_local_all[ (nCells_x + nCells_y) : ] = tau_local_z.flatten()
+
+        # calculate effective optical depth statistics
+        tau_local_mean = np.mean(tau_local_all)
+        tau_local_upp = np.percentile(tau_local_all, 84)
+        tau_local_med = np.percentile(tau_local_all, 50)
+        tau_local_low = np.percentile(tau_local_all, 18)
+
+        # calculate local fluxes
+        fluxes_local_all = np.exp(-1. * tau_local_all)
+
+        # calculate mean and 18-50-84 percentiles of local fluxes
+        flux_local_mean = np.mean(fluxes_local_all)
+        flux_local_upp = np.percentile(fluxes_local_all, 84)
+        flux_local_med = np.percentile(fluxes_local_all, 50)
+        flux_local_low = np.percentile(fluxes_local_all, 18)
+
+        # calculate associated optical depth
+        tau_mean_flux_local = - np.log(flux_local_mean)
+        tau_upp_flux_local = - np.log(flux_local_upp)
+        tau_med_flux_local = - np.log(flux_local_med)
+        tau_low_flux_local = - np.log(flux_local_low)
+
+        if args.verbose:
+            global_string += f'\n--- Mean local optical depth : {tau_local_mean:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of local flux : {tau_local_low:.4e} / {tau_local_med:.4e} / {tau_local_upp:.4e} --- \n'
+
+            global_string += f'--- Mean local flux : {flux_local_mean:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of local flux : {flux_local_low:.4e} / {flux_local_med:.4e} / {flux_local_upp:.4e} --- \n'
+
+            global_string += f'--- Optical depth of Mean local flux : {tau_mean_flux_local:.4e} --- \n'
+            global_string += f'--- --- Optical depth of 18/50/84 local flux : {tau_low_flux_local:.4e} / {tau_med_flux_local:.4e} / {tau_upp_flux_local:.4e} --- \n'
+            print(global_string)
 
     if args.verbose:
         curr_str = f'--- Distribution of skewers in nOutput {nOutput} / scale factor: '
         curr_str += f'{scale_factor:.4f} / redshift: {redshift:.4f} --- '
         print(curr_str)
         print(f'--- | nquantile | tau_min | tau_max | Mean (tau_eff) | Mean(tau_local) | tau_meanF_eff | tau_meanF_local | x_skewers | y_skewers | z_skewers | ---')
-
-    # save the local optical depths
-    tau_local_x = OTFSkewers_x.get_skeweralldata(tau_local_key, dtype=precision)
-    tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
-    tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
 
     for nquantile in range(args.nquantiles):
         # grab the indices corresponding to number of skewers in this quantile
@@ -891,13 +936,18 @@ def main():
 
         # calculate fluxes and the mean
         fluxes_local_currQuantile = np.exp(- tau_local_currQuantile)
-        meanF_local_quantiles[quantile_key] = np.mean(fluxes_local_currQuantile)
+        mean_flux_local_quantiles[quantile_key] = np.mean(fluxes_local_currQuantile)
+        med_flux_local_quantiles[quantile_key] = np.percentile(fluxes_local_currQuantile, 50)
         fluxes_eff_currQuantile = np.exp(- tau_eff_currQuantile)
-        meanF_eff_quantiles[quantile_key] = np.mean(fluxes_eff_currQuantile)
+        mean_flux_eff_quantiles[quantile_key] = np.mean(fluxes_eff_currQuantile)
+        med_flux_eff_quantiles[quantile_key] = np.percentile(fluxes_eff_currQuantile, 50)
 
         # calculate effective optical depth wrt mean flux values
-        tau_meanF_local_quantiles[quantile_key] = -np.log(meanF_local_quantiles[quantile_key])
-        tau_meanF_eff_quantiles[quantile_key] = -np.log(meanF_eff_quantiles[quantile_key])
+        tau_mean_flux_local_quantiles[quantile_key] = -np.log(mean_flux_local_quantiles[quantile_key])
+        tau_mean_flux_eff_quantiles[quantile_key] = -np.log(mean_flux_eff_quantiles[quantile_key])
+
+        tau_med_flux_local_quantiles[quantile_key] = -np.log(med_flux_local_quantiles[quantile_key])
+        tau_med_flux_eff_quantiles[quantile_key] = -np.log(med_flux_eff_quantiles[quantile_key])
 
         if args.verbose:
             curr_str = f"--- | {nquantile:.0f} | "
@@ -905,54 +955,12 @@ def main():
             curr_str += f"{tau_eff_all[indx_currQuantile[-1]]:.4e} | "
             curr_str += f"{mean_tau_eff_quantiles[quantile_key]:.4e} | "
             curr_str += f"{mean_tau_local_quantiles[quantile_key]:.4e} | "
-            curr_str += f"{tau_meanF_eff_quantiles[quantile_key]:.4e} | "
-            curr_str += f"{tau_meanF_local_quantiles[quantile_key]:.4e} | "
+            curr_str += f"{tau_mean_flux_eff_quantiles[quantile_key]:.4e} | "
+            curr_str += f"{tau_mean_flux_local_quantiles[quantile_key]:.4e} | "
             curr_str += f"{100 * nskews_x_currQuantile / nskewers_tot:.4f} % | "
             curr_str += f"{100 * nskews_y_currQuantile / nskewers_tot:.4f} % | "
             curr_str += f"{100 * nskews_z_currQuantile / nskewers_tot:.4f} % | --- "
             print(curr_str)
-
-    if not outfile_exists:
-        # group the local optical depths
-        nCells_x = int(nskewers_x * nCells[0])
-        nCells_y = int(nskewers_y * nCells[1])
-        nCells_z = int(nskewers_z * nCells[2])
-        tau_local_all = np.zeros((nCells_x + nCells_y + nCells_z), dtype=precision)
-        tau_local_all[ : (nCells_x) ] = tau_local_x.flatten()
-        tau_local_all[ (nCells_x) : (nCells_x + nCells_y)] = tau_local_y.flatten()
-        tau_local_all[ (nCells_x + nCells_y) : ] = tau_local_z.flatten()
-
-        # calculate effective optical depth statistics
-        tau_local_mean = np.mean(tau_local_all)
-        tau_local_upp = np.percentile(tau_local_all, 84)
-        tau_local_med = np.percentile(tau_local_all, 50)
-        tau_local_low = np.percentile(tau_local_all, 18)
-
-        # calculate local fluxes
-        fluxes_local_all = np.exp(-1. * tau_local_all)
-
-        # calculate mean and 18-50-84 percentiles of local fluxes
-        meanF_local = np.mean(fluxes_local_all)
-        uppF_local = np.percentile(fluxes_local_all, 84)
-        medF_local = np.percentile(fluxes_local_all, 50)
-        lowF_local = np.percentile(fluxes_local_all, 18)
-
-        # calculate associated optical depth
-        tau_meanF_local = - np.log(meanF_local)
-        tau_uppF_local = - np.log(uppF_local)
-        tau_medF_local = - np.log(medF_local)
-        tau_lowF_local = - np.log(lowF_local)
-
-        if args.verbose:
-            global_string += f'\n--- Mean local optical depth : {tau_local_mean:.4e} --- \n'
-            global_string += f'--- --- 18/50/84 of local flux : {tau_local_low:.4e} / {tau_local_med:.4e} / {tau_local_upp:.4e} --- \n'
-
-            global_string += f'--- Mean local flux : {meanF_local:.4e} --- \n'
-            global_string += f'--- --- 18/50/84 of local flux : {lowF_local:.4e} / {medF_eff:.4e} / {uppF_eff:.4e} --- \n'
-
-            global_string += f'--- Optical depth of Mean local flux : {tau_meanF_local:.4e} --- \n'
-            global_string += f'--- --- Optical depth of 18/50/84 local flux : {tau_lowF_local:.4e} / {tau_medF_local:.4e} / {tau_uppF_local:.4e} --- \n'
-            print(global_string)
 
 
     # find the index of the skewers that do not fall within the input range & print its info
@@ -1007,13 +1015,13 @@ def main():
 
         # calculate fluxes and the mean
         fluxes_local_outQuantiles = np.exp(- tau_local_outQuantiles)
-        meanF_local_outQuantiles = np.mean(fluxes_local_outQuantiles)
+        mean_flux_local_outQuantiles = np.mean(fluxes_local_outQuantiles)
         fluxes_eff_outQuantiles = np.exp(- tau_eff_outQuantiles)
-        meanF_eff_outQuantiles = np.mean(fluxes_eff_outQuantiles)
+        mean_flux_eff_outQuantiles = np.mean(fluxes_eff_outQuantiles)
 
         # calculate effective optical depth wrt mean flux values
-        tau_meanF_eff_outQuantiles = -np.log(meanF_eff_outQuantiles)
-        tau_meanF_local_outQuantiles = -np.log(meanF_local_outQuantiles)
+        tau_mean_flux_eff_outQuantiles = -np.log(mean_flux_eff_outQuantiles)
+        tau_mean_flux_local_outQuantiles = -np.log(mean_flux_local_outQuantiles)
 
         if args.verbose:
             print(f'--- | nquantile | Mean (tau_eff) | Mean(tau_local) | tau_meanF_eff | tau_meanF_local | x_skewers | y_skewers | z_skewers | ---')
@@ -1021,8 +1029,8 @@ def main():
             curr_str = f"--- | out | "
             curr_str += f"{mean_tau_eff_outQuantiles:.4e} | "
             curr_str += f"{mean_tau_local_outQuantiles:.4e} | "
-            curr_str += f"{tau_meanF_eff_outQuantiles:.4e} | "
-            curr_str += f"{tau_meanF_local_outQuantiles:.4e} | "
+            curr_str += f"{tau_mean_flux_eff_outQuantiles:.4e} | "
+            curr_str += f"{tau_mean_flux_local_outQuantiles:.4e} | "
 
             curr_str += f"{100 * nskews_x_outQuantiles / nskewers_tot:.4f} % | "
             curr_str += f"{100 * nskews_y_outQuantiles / nskewers_tot:.4f} % | "
@@ -1091,24 +1099,25 @@ def main():
         tau_local_z_currQuantile = tau_local_z[skewid_z_currQuantile]
 
         # grab mean flux in quantile
-        flux_mean_currQuantile = meanF_local_quantiles[quantile_key]
-        flux_mean_currQuantile = meanF_eff_quantiles[quantile_key]
+        flux_mean_currQuantile = mean_flux_local_quantiles[quantile_key]
+        flux_mean_currQuantile = mean_flux_eff_quantiles[quantile_key]
+        flux_med_currQuantile = med_flux_eff_quantiles[quantile_key]
 
         if nskews_x_currQuantile:
             _, FPS_currQuantile_x = FPSHead_x.get_FPS(tau_local_x_currQuantile,
-                                                      flux_mean_global=flux_mean_currQuantile, 
+                                                      flux_mean_global=flux_med_currQuantile, 
                                                       precision=precision)
             FPS_quantiles[quantile_key]['FPS_x'] += FPS_currQuantile_x
 
         if nskews_y_currQuantile:
             _, FPS_currQuantile_y = FPSHead_y.get_FPS(tau_local_y_currQuantile,
-                                                      flux_mean_global=flux_mean_currQuantile,
+                                                      flux_mean_global=flux_med_currQuantile,
                                                       precision=precision)
             FPS_quantiles[quantile_key]['FPS_y'] += FPS_currQuantile_y
 
         if nskews_z_currQuantile:    
             _, FPS_currQuantile_z = FPSHead_z.get_FPS(tau_local_z_currQuantile,
-                                                      flux_mean_global=flux_mean_currQuantile,
+                                                      flux_mean_global=flux_med_currQuantile,
                                                       precision=precision)
             FPS_quantiles[quantile_key][f'FPS_z'] += FPS_currQuantile_z
 
@@ -1155,15 +1164,15 @@ def main():
             _ = fObj.attrs.create('tau_eff_med', tau_eff_med)
             _ = fObj.attrs.create('tau_eff_low', tau_eff_low)
 
-            _ = fObj.attrs.create('tau_meanF_eff', tau_meanF_eff)
-            _ = fObj.attrs.create('tau_uppF_eff', tau_uppF_eff)
-            _ = fObj.attrs.create('tau_medF_eff', tau_medF_eff)
-            _ = fObj.attrs.create('tau_lowF_eff', tau_lowF_eff)
+            _ = fObj.attrs.create('tau_mean_flux_eff', tau_mean_flux_eff)
+            _ = fObj.attrs.create('tau_upp_flux_eff', tau_upp_flux_eff)
+            _ = fObj.attrs.create('tau_med_flux_eff', tau_med_flux_eff)
+            _ = fObj.attrs.create('tau_low_flux_eff', tau_low_flux_eff)
 
-            _ = fObj.attrs.create('tau_meanF_local', tau_meanF_local)
-            _ = fObj.attrs.create('tau_uppF_local', tau_uppF_local)
-            _ = fObj.attrs.create('tau_medF_local', tau_medF_local)
-            _ = fObj.attrs.create('tau_lowF_local', tau_lowF_local)
+            _ = fObj.attrs.create('tau_mean_flux_local', tau_mean_flux_local)
+            _ = fObj.attrs.create('tau_upp_flux_local', tau_upp_flux_local)
+            _ = fObj.attrs.create('tau_med_flux_local', tau_med_flux_local)
+            _ = fObj.attrs.create('tau_low_flux_local', tau_low_flux_local)
 
 
         _ = fObj.attrs.modify('nquantiles', args.nquantiles)
@@ -1189,13 +1198,17 @@ def main():
             # grab mean local optical depth
             tau_local_currQuantile_mean = mean_tau_local_quantiles[quantile_key]
 
-            # grab mean effective and local fluxes
-            meanF_local_currQuantile = meanF_local_quantiles[quantile_key]
-            meanF_eff_currQuantile = meanF_eff_quantiles[quantile_key]
+            # grab mean / median effective and local fluxes
+            mean_flux_local_currQuantile = mean_flux_local_quantiles[quantile_key]
+            mean_flux_eff_currQuantile = mean_flux_eff_quantiles[quantile_key]
+            med_flux_local_currQuantile = med_flux_local_quantiles[quantile_key]
+            med_flux_eff_currQuantile = med_flux_eff_quantiles[quantile_key]
 
-            # grab optical depth from mean fluxes
-            tau_meanF_local_currQuantile = tau_meanF_local_quantiles[quantile_key]
-            tau_meanF_eff_currQuantile = tau_meanF_eff_quantiles[quantile_key]
+            # grab optical depth from mean / median fluxes
+            tau_mean_flux_local_currQuantile = tau_mean_flux_local_quantiles[quantile_key]
+            tau_mean_flux_eff_currQuantile = tau_mean_flux_eff_quantiles[quantile_key]
+            tau_med_flux_local_currQuantile = tau_med_flux_local_quantiles[quantile_key]
+            tau_med_flux_eff_currQuantile = tau_med_flux_eff_quantiles[quantile_key]
 
             # grab flux power spectra
             FPS_x = FPS_currQuantile['FPS_x']
@@ -1211,11 +1224,15 @@ def main():
             _ = quantile_group.attrs.create('tau_mean', tau_eff_currQuantile_mean)
 
             _ = quantile_group.attrs.create('tau_local_mean', tau_local_currQuantile_mean)
-            _ = quantile_group.attrs.create('meanF_eff', meanF_eff_currQuantile)
-            _ = quantile_group.attrs.create('meanF_local', meanF_local_currQuantile) # used for FFT
-            
-            _ = quantile_group.attrs.create('tau_meanF_eff', tau_meanF_eff_currQuantile)
-            _ = quantile_group.attrs.create('tau_meanF_local', tau_meanF_local_currQuantile)
+            _ = quantile_group.attrs.create('mean_flux_eff', mean_flux_eff_currQuantile)
+            _ = quantile_group.attrs.create('mean_flux_local', mean_flux_local_currQuantile)
+            _ = quantile_group.attrs.create('med_flux_eff', med_flux_eff_currQuantile)
+            _ = quantile_group.attrs.create('med_flux_local', med_flux_local_currQuantile) # used for FFT           
+
+            _ = quantile_group.attrs.create('tau_mean_flux_eff', tau_mean_flux_eff_currQuantile)
+            _ = quantile_group.attrs.create('tau_mean_flux_local', tau_mean_flux_local_currQuantile)
+            _ = quantile_group.attrs.create('tau_medF_eff', tau_med_flux_eff_currQuantile)
+            _ = quantile_group.attrs.create('tau_medF_local', tau_med_flux_local_currQuantile)
 
             _ = quantile_group.create_dataset('indices', data=indx_currQuantile)
             _ = quantile_group.create_dataset('FPS_x', data=FPS_x)

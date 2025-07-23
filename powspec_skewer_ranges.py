@@ -760,26 +760,26 @@ def main():
         fluxes_eff_all = np.exp(-1. * tau_eff_all)
 
         # calculate mean and 18-50-84 percentiles of effective flux
-        meanF_eff = np.mean(fluxes_eff_all)
-        uppF_eff = np.percentile(fluxes_eff_all, 84)
-        medF_eff = np.percentile(fluxes_eff_all, 50)
-        lowF_eff = np.percentile(fluxes_eff_all, 18)
+        flux_eff_mean = np.mean(fluxes_eff_all)
+        flux_eff_upp = np.percentile(fluxes_eff_all, 84)
+        flux_eff_med = np.percentile(fluxes_eff_all, 50)
+        flux_eff_low = np.percentile(fluxes_eff_all, 18)
 
         # calculate associated optical depth
-        tau_meanF_eff = -1. * np.log(meanF_eff)
-        tau_uppF_eff = -1. * np.log(uppF_eff)
-        tau_medF_eff = -1. * np.log(medF_eff)
-        tau_lowF_eff = -1. * np.log(lowF_eff)
+        tau_mean_flux_eff = -1. * np.log(flux_eff_mean)
+        tau_upp_flux_eff = -1. * np.log(flux_eff_upp)
+        tau_med_flux_eff = -1. * np.log(flux_eff_med)
+        tau_low_flux_eff = -1. * np.log(flux_eff_low)
 
         if args.verbose:
             global_string = f'--- Mean effective optical depth : {tau_eff_mean:.4e} --- \n'
             global_string += f'--- --- 18/50/84 of effective optical depth : {tau_eff_low:.4e} / {tau_eff_med:.4e} / {tau_eff_upp:.4e} --- \n'
 
-            global_string += f'--- Mean effective flux : {meanF_eff:.4e} --- \n'
-            global_string += f'--- --- 18/50/84 of effective flux : {lowF_eff:.4e} / {medF_eff:.4e} / {uppF_eff:.4e} --- \n'
+            global_string += f'--- Mean effective flux : {flux_eff_mean:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of effective flux : {flux_eff_low:.4e} / {flux_eff_med:.4e} / {flux_eff_upp:.4e} --- \n'
 
-            global_string += f'--- Optical depth of Mean effective flux : {tau_meanF_eff:.6e} --- \n'
-            global_string += f'--- --- Optical depth of 18/50/84 effective flux: {tau_lowF_eff:.4e} / {tau_medF_eff:.4e} / {tau_uppF_eff:.4e} --- \n'
+            global_string += f'--- Optical depth of Mean effective flux : {tau_mean_flux_eff:.4e} --- \n'
+            global_string += f'--- --- Optical depth of 18/50/84 effective flux: {tau_low_flux_eff:.4e} / {tau_med_flux_eff:.4e} / {tau_upp_flux_eff:.4e} --- \n'
 
 
     # create a mask of all effective optical depths within our range
@@ -829,29 +829,38 @@ def main():
         tau_local_all[ (nCells_x) : (nCells_x + nCells_y)] = tau_local_y.flatten()
         tau_local_all[ (nCells_x + nCells_y) : ] = tau_local_z.flatten()
 
-        # calculate local flux
+        # calculate effective optical depth statistics
+        tau_local_mean = np.mean(tau_local_all)
+        tau_local_upp = np.percentile(tau_local_all, 84)
+        tau_local_med = np.percentile(tau_local_all, 50)
+        tau_local_low = np.percentile(tau_local_all, 18)
+
+        # calculate local fluxes
         fluxes_local_all = np.exp(-1. * tau_local_all)
 
         # calculate mean and 18-50-84 percentiles of local fluxes
-        meanF_local = np.mean(fluxes_local_all)
-        uppF_local = np.percentile(fluxes_local_all, 84)
-        medF_local = np.percentile(fluxes_local_all, 50)
-        lowF_local = np.percentile(fluxes_local_all, 18)
+        flux_local_mean = np.mean(fluxes_local_all)
+        flux_local_upp = np.percentile(fluxes_local_all, 84)
+        flux_local_med = np.percentile(fluxes_local_all, 50)
+        flux_local_low = np.percentile(fluxes_local_all, 18)
 
         # calculate associated optical depth
-        tau_meanF_local = - np.log(meanF_local)
-        tau_uppF_local = - np.log(uppF_local)
-        tau_medF_local = - np.log(medF_local)
-        tau_lowF_local = - np.log(lowF_local)
+        tau_mean_flux_local = - np.log(flux_local_mean)
+        tau_upp_flux_local = - np.log(flux_local_upp)
+        tau_med_flux_local = - np.log(flux_local_med)
+        tau_low_flux_local = - np.log(flux_local_low)
 
         if args.verbose:
-            global_string += f'--- Mean local flux : {meanF_local:.4e} --- \n'
-            global_string += f'--- --- 18/50/84 of local flux : {lowF_local:.4e} / {medF_eff:.4e} / {uppF_eff:.4e} --- \n'
+            global_string += f'\n--- Mean local optical depth : {tau_local_mean:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of local flux : {tau_local_low:.4e} / {tau_local_med:.4e} / {tau_local_upp:.4e} --- \n'
 
-            global_string += f'--- Optical depth of Mean local flux : {tau_meanF_local:.4e} --- \n'
-            global_string += f'--- --- Optical depth of 18/50/84 local flux : {tau_lowF_local:.4e} / {tau_medF_local:.4e} / {tau_uppF_local:.4e} --- \n'
+            global_string += f'--- Mean local flux : {flux_local_mean:.4e} --- \n'
+            global_string += f'--- --- 18/50/84 of local flux : {flux_local_low:.4e} / {flux_local_med:.4e} / {flux_local_upp:.4e} --- \n'
 
+            global_string += f'--- Optical depth of Mean local flux : {tau_mean_flux_local:.4e} --- \n'
+            global_string += f'--- --- Optical depth of 18/50/84 local flux : {tau_low_flux_local:.4e} / {tau_med_flux_local:.4e} / {tau_upp_flux_local:.4e} --- \n'
             print(global_string)
+
 
     # create an array for all local optical depths along an axis
     tau_local_x_inbounds = tau_local_x[skewid_x_inbounds].flatten()
@@ -873,16 +882,20 @@ def main():
     # calculate fluxes and the mean
     fluxes_local_inbounds = np.exp(- tau_local_inbounds)
     fluxes_eff_inbounds = np.exp(- tau_eff_all[tau_eff_all_inbounds_mask])
-    meanF_local_inbounds = np.mean(fluxes_local_inbounds)
-    meanF_eff_inbounds = np.mean(fluxes_eff_inbounds)
+    mean_flux_local_inbounds = np.mean(fluxes_local_inbounds)
+    mean_flux_eff_inbounds = np.mean(fluxes_eff_inbounds)
+    med_flux_local_inbounds = np.percentile(fluxes_local_inbounds, 50)
+    med_flux_eff_inbounds = np.percentile(fluxes_eff_inbounds, 50)
 
     # calculate effective optical depth wrt mean flux values
-    tau_meanF_local_inbounds = -np.log(meanF_local_inbounds)
-    tau_meanF_eff_inbounds = -np.log(meanF_eff_inbounds)
+    tau_mean_flux_local_inbounds = -np.log(mean_flux_local_inbounds)
+    tau_mean_flux_eff_inbounds = -np.log(mean_flux_eff_inbounds)
+    tau_med_flux_local_inbounds = -np.log(med_flux_local_inbounds)
+    tau_med_flux_eff_inbounds = -np.log(med_flux_eff_inbounds)
 
     if args.verbose:
-        curr_str = f'--- Mean local flux (inbounds) : {meanF_local_inbounds:.4e} / tau : {tau_meanF_local_inbounds:.4e} ---'
-        curr_str = f'--- Mean effective flux (inbounds) : {meanF_eff_inbounds:.4e} / tau : {tau_meanF_eff_inbounds:.4e} ---'
+        curr_str = f'--- Mean local flux (inbounds) : {mean_flux_local_inbounds:.4e} / tau : {tau_mean_flux_local_inbounds:.4e} ---'
+        curr_str = f'--- Mean effective flux (inbounds) : {mean_flux_eff_inbounds:.4e} / tau : {tau_mean_flux_eff_inbounds:.4e} ---'
         print(curr_str)
 
     # find the index of the skewers that do not fall within the input range & print its info
@@ -927,21 +940,21 @@ def main():
     if nskews_x_inbounds:
         tau_local_x_inbounds = tau_local_x_inbounds.reshape((nskews_x_inbounds, nCells[0]))
         _, calc_FPS_x = FPSHead_x.get_FPS(tau_local_x_inbounds,
-                                          flux_mean_global=meanF_eff_inbounds, 
+                                          flux_mean_global=med_flux_eff_inbounds, 
                                           precision=precision)
         FPS_x += calc_FPS_x
 
     if nskews_y_inbounds:
         tau_local_y_inbounds = tau_local_y_inbounds.reshape((nskews_y_inbounds, nCells[1]))
         _, calc_FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
-                                          flux_mean_global=meanF_eff_inbounds,
+                                          flux_mean_global=med_flux_eff_inbounds,
                                           precision=precision)
         FPS_y += calc_FPS_y
 
     if nskews_z_inbounds:    
         tau_local_z_inbounds = tau_local_z_inbounds.reshape((nskews_z_inbounds, nCells[2]))
         _, calc_FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
-                                          flux_mean_global=meanF_eff_inbounds,
+                                          flux_mean_global=med_flux_eff_inbounds,
                                           precision=precision)
         FPS_z += calc_FPS_z
 
@@ -987,15 +1000,16 @@ def main():
             _ = fObj.attrs.create('tau_eff_med', tau_eff_med)
             _ = fObj.attrs.create('tau_eff_low', tau_eff_low)
 
-            _ = fObj.attrs.create('tau_meanF_eff', tau_meanF_eff)
-            _ = fObj.attrs.create('tau_uppF_eff', tau_uppF_eff)
-            _ = fObj.attrs.create('tau_medF_eff', tau_medF_eff)
-            _ = fObj.attrs.create('tau_lowF_eff', tau_lowF_eff)
+            _ = fObj.attrs.create('tau_mean_flux_eff', tau_mean_flux_eff)
+            _ = fObj.attrs.create('tau_upp_flux_eff', tau_upp_flux_eff)
+            _ = fObj.attrs.create('tau_med_flux_eff', tau_med_flux_eff)
+            _ = fObj.attrs.create('tau_low_flux_eff', tau_low_flux_eff)
 
-            _ = fObj.attrs.create('tau_meanF_local', tau_meanF_local)
-            _ = fObj.attrs.create('tau_uppF_local', tau_uppF_local)
-            _ = fObj.attrs.create('tau_medF_local', tau_medF_local)
-            _ = fObj.attrs.create('tau_lowF_local', tau_lowF_local)
+            _ = fObj.attrs.create('tau_mean_flux_local', tau_mean_flux_local)
+            _ = fObj.attrs.create('tau_upp_flux_local', tau_upp_flux_local)
+            _ = fObj.attrs.create('tau_med_flux_local', tau_med_flux_local)
+            _ = fObj.attrs.create('tau_low_flux_local', tau_low_flux_local)
+
 
         
         curr_nranges = fObj.attrs['nranges'].item()
@@ -1007,11 +1021,11 @@ def main():
         _ = range_group.attrs.create('tau_max', args.optdepthupp)
         _ = range_group.attrs.create('tau_mean', np.mean(tau_eff_all[tau_eff_all_inbounds_mask]))
 
-        _ = range_group.attrs.create('meanF_local_inrange', meanF_local_inbounds)
-        _ = range_group.attrs.create('meanF_eff_inrange', meanF_eff_inbounds)
+        _ = range_group.attrs.create('mean_flux_local_inrange', mean_flux_local_inbounds)
+        _ = range_group.attrs.create('mean_flux_eff_inrange', mean_flux_eff_inbounds)
 
-        _ = range_group.attrs.create('tau_meanF_local_inrange', tau_meanF_local_inbounds)
-        _ = range_group.attrs.create('tau_meanF_eff_inrange', tau_meanF_eff_inbounds)
+        _ = range_group.attrs.create('tau_mean_flux_local_inrange', tau_mean_flux_local_inbounds)
+        _ = range_group.attrs.create('tau_mean_flux_eff_inrange', tau_mean_flux_eff_inbounds)
 
         _ = range_group.create_dataset('indices', data=indx_all_inbounds)
         _ = range_group.create_dataset('FPS_x', data=FPS_x)
