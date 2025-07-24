@@ -41,6 +41,9 @@ def create_parser():
 
     parser.add_argument("tau_target", help='Optical depth to match to', type=float)
 
+    parser.add_argument('-r', '--restart', help='Print info along the way',
+                        action='store_true')
+
     parser.add_argument('-v', '--verbose', help='Print info along the way', 
                         action='store_true')
 
@@ -803,7 +806,7 @@ class ChollaOnTheFlySkewers:
 #####
 
 
-def init_taucalc(OTFSkewers, nmax, comm, verbose=False):
+def init_taucalc(OTFSkewers, tau_target, nmax, comm, restart=False, verbose=False):
     '''
     Initialize the calculation of the effective optical depth matched. For each skewers_i axis
         group, create three things:
@@ -816,8 +819,10 @@ def init_taucalc(OTFSkewers, nmax, comm, verbose=False):
 
     Args:
         OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
+        tau_target (float): the optical depth seeking to match
         nmax (int): number of new density scalars to attempt
         comm (mpi4py.MPI.Comm): communication context
+        restart (bool): (optional) whether to reset progress
         verbose (bool): (optional) whether to print important information
     Returns:
         ...
@@ -832,6 +837,44 @@ def init_taucalc(OTFSkewers, nmax, comm, verbose=False):
         if verbose:
             print(f'--- {rank_idstr} : \t...initializing optical depth calculations for file {OTFSkewers.OTFSkewersfPath} ---')
 
+        OTF_attrs_keys = fObj.attrs.keys()
+
+        density_scale_delta_max = 1.e8
+        if 'density_scale_delta_max' not in OTF_attrs_keys:
+            if verbose:
+                print(f"--- {rank_idstr} : \t creating upper density scale delta ---")
+            _ = fObj.attrs.create('density_scale_delta_max', density_scale_delta_max)
+        elif restart:
+            fObj.attrs['density_scale_delta_max'] = density_scale_delta_max
+            if verbose:
+                print(f"--- {rank_idstr} : \t restarting with upper density scale delta of {density_scale_delta_max:.4e} ---")
+        else:
+            if verbose:
+                density_scale_delta_max = fObj.attrs['density_scale_delta_max'].item()
+                print(f"--- {rank_idstr} : \t starting out with saved upper density scale delta of {density_scale_delta_max:.4e} ---")
+
+
+        density_scale_delta_min = 1.e-8
+        if 'density_scale_delta_min' not in OTF_attrs_keys:
+            if verbose:
+                print(f"--- {rank_idstr} : \t creating lower density scale delta ---")
+            _ = fObj.attrs.create('density_scale_delta_min', density_scale_delta_min)
+        elif restart:
+            fObj.attrs['density_scale_delta_min'] = density_scale_delta_min
+            if verbose:
+                print(f"--- {rank_idstr} : \t restarting out with lower density scale delta of {density_scale_delta_min:.4e} ---")
+        else:
+            if verbose and rank == 0:
+                density_scale_delta_min = fObj.attrs['density_scale_delta_min'].item()
+                print(f"--- {rank_idstr} : \t starting out with saved lower density scale delta of {density_scale_delta_min:.4e} ---")
+
+
+        if 'tau_target_match' not in OTF_attrs_keys:
+            _ = fObj.attrs.create('tau_target_match', tau_target)
+        elif not restart:
+            assert fObj.attrs['tau_target_match'] == tau_target
+        else:
+            fObj.attrs['tau_target_match'] = tau_target
 
         OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
                         OTFSkewers.get_skewersy_obj(),
@@ -864,6 +907,7 @@ def init_taucalc(OTFSkewers, nmax, comm, verbose=False):
                 fObj[skew_key].create_dataset('taucalc_local_match', data=taucalc_local)
 
 
+
     # save snapshot specific information
     scale_factor = OTFSkewers.current_a
     redshift = OTFSkewers.current_z
@@ -892,6 +936,7 @@ def init_taucalc(OTFSkewers, nmax, comm, verbose=False):
         _ = fObj.attrs.create('wa', wa)
         _ = fObj.attrs.create('current_a', scale_factor)
         _ = fObj.attrs.create('current_z', redshift)
+        _ = fObj.attrs.create('tau_target', tau_target)
 
         if f'calctime_{size:.0f}_nprocs_match' not in fObj.keys():
             calctime_arr = np.zeros(size, dtype=np.float64)
@@ -902,11 +947,11 @@ def init_taucalc(OTFSkewers, nmax, comm, verbose=False):
             fObj.create_dataset(f'inittime_{size:.0f}_nprocs_match', data=calctime_arr)
 
         if f'taucalc_eff_history' not in fObj.keys():
-            calctime_arr = np.zeros(nmax, dtype=np.float64)
+            calctime_arr = np.zeros(nmax+1, dtype=np.float64)
             fObj.create_dataset(f'taucalc_eff_history', data=calctime_arr)
 
         if f'density_scale_history' not in fObj.keys():
-            calctime_arr = np.zeros(nmax, dtype=np.float64)
+            calctime_arr = np.zeros(nmax+1, dtype=np.float64)
             fObj.create_dataset(f'density_scale_history', data=calctime_arr)
 
         OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
@@ -1038,7 +1083,7 @@ def main():
 
     # add progress attribute, boolean mask for whether tau is calculated, and tau itself
     t_init_start = MPI.Wtime()
-    init_taucalc(OTFSkewers, nmax, comm, verbose=args.verbose)
+    init_taucalc(OTFSkewers, args.tau_target, nmax, comm, restart=args.restart, verbose=args.verbose)
     t_init_end = MPI.Wtime()
     if args.verbose:
         print(f"--- {rank_idstr} : Took {t_init_end - t_init_start:.4e} secs to initialize info ---")
@@ -1073,8 +1118,13 @@ def main():
     curr_taucalc_eff_match = 0.
 
     # define the relative and absolute tolerance to match optical depths
-    rtol, atol = 1.e-1, 1.e-1
+    rtol, atol = 1.e-6, 1.e-6
     converged = False
+
+    # grab density scale ranges
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r', driver='mpio', comm=comm) as fObj:
+        density_scale_delta_max = fObj.attrs['density_scale_delta_max'].item()
+        density_scale_delta_min = fObj.attrs['density_scale_delta_min'].item()
 
     if args.verbose and rank == 0:
         print(f"--- {rank_idstr} : We are aiming for relative/absolute tol of {rtol:.4e} / {atol:.4e}")
@@ -1125,14 +1175,19 @@ def main():
         
         # calculate initial scalar for HIdensity and create array to save
         density_scale_delta = np.abs(1. - (args.tau_target / curr_taucalc_eff_match))
-        density_scale_delta_max = 1.e8
-        density_scale_delta_min = 1.e-8
-
+        
         if overall_boost:
             density_scale = 1. + (density_scale_delta)
+            if args.verbose:
+                density_scale_min = 1. + density_scale_delta_min
+                density_scale_max = 1. + density_scale_delta_max
+                print(f"--- {rank_idstr} : we are boosting the density within the range of {density_scale_min:.4e} and {density_scale_max:.4e}")
         else:
             density_scale = 1. / (1. + density_scale_delta)
-            #density_scale = 1. - (density_scale_delta)
+            if args.verbose:
+                density_scale_min = 1. / (1. + density_scale_delta_max)
+                density_scale_max = 1. / (1. + density_scale_delta_min)
+                print(f"--- {rank_idstr} : we are decreasing the density within the range of {density_scale_min:.4e} and {density_scale_max:.4e}")
 
         taucalc_eff_atol = np.abs(args.tau_target - curr_taucalc_eff_match)
         taucalc_eff_rtol = taucalc_eff_atol / args.tau_target
@@ -1234,19 +1289,33 @@ def main():
             if not converged:
                 if overall_boost:
                     density_scale = 1. + (density_scale_delta)
+                    if args.verbose:
+                        density_scale_min = 1. + density_scale_delta_min
+                        density_scale_max = 1. + density_scale_delta_max
                 else:
                     density_scale = 1. / (1. + density_scale_delta)
-                    #density_scale = 1. - (density_scale_delta)
+                    if args.verbose:
+                        density_scale_min = 1. / (1. + density_scale_delta_max)
+                        density_scale_max = 1. / (1. + density_scale_delta_min)
 
             if args.verbose:
-                print(f"--- {rank_idstr} : lDelta min/max : {l_density_scale_delta_min:.4e} / {l_density_scale_delta_max:.4e}")
-                print(f"--- {rank_idstr} : New density scale delta of : {density_scale_delta:.4e}")
-                print(f"--- {rank_idstr} : New density scale of : {density_scale:.4e}")
+                print(f"--- {rank_idstr} : lDelta min/max : {l_density_scale_delta_min:.4e} / {l_density_scale_delta_max:.4e} ---")
+                print(f"--- {rank_idstr} : New density scale delta of : {density_scale_delta:.4e} ---")
+                print(f"--- {rank_idstr} : New density scale range of {density_scale_min:.4e} / {density_scale_max:.4e} --- ")
+                print(f"--- {rank_idstr} : New density scale of : {density_scale:.4e} ---")
 
             # iterate n
             n += 1
-
+        
         comm.Barrier()
+
+        # update density scales within skewers fpath
+        density_scale_delta_max = comm.bcast(density_scale_delta_max, root=0)
+        density_scale_delta_min = comm.bcast(density_scale_delta_min, root=0)
+        with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
+            fObj.attrs['density_scale_delta_max'] = density_scale_delta_max
+            fObj.attrs['density_scale_delta_min'] = density_scale_delta_min
+
         # from rank0 get convergence criterion evaluation, iteration value, and new density scale
         converged = comm.bcast(converged, root=0)
         n = comm.bcast(n, root=0)
@@ -1261,6 +1330,8 @@ def main():
     tauMatch_fPath = OTFSkewers.OTFSkewersfPath.parent / Path(fName_match)
 
 
+    if args.verbose:
+        print(f"--- {rank_idstr} : Copying local and effective tau info to {tauMatch_fPath} ---")
     with h5py.File(tauMatch_fPath, 'r+', driver='mpio', comm=comm) as fObj_match:
 
         with h5py.File(OTFSkewers.OTFSkewersfPath, 'r', driver='mpio', comm=comm) as fObj:
@@ -1276,7 +1347,7 @@ def main():
 
                 for nSkewerID in skewerIDs_rank:
                     fObj_match[skew_key]['taucalc_eff'][nSkewerID] = fObj[skew_key]['taucalc_eff_match'][nSkewerID]
-                    fObj_match[skew_key]['taucalc_local'][nSkewerID][:] = fObj[skew_key]['taucalc_local_match'][nSkewerID][:]
+                    fObj_match[skew_key]['taucalc_local'][nSkewerID] = fObj[skew_key]['taucalc_local_match'][nSkewerID]
 
         if args.verbose:
             print(f"--- {rank_idstr} : Took {t_end - t_start:.4e} secs for entire calculation ---")
@@ -1286,18 +1357,27 @@ def main():
         if rank == 0:
             fObj_match['taucalc_eff_history'][:] = taucalc_eff_match_history[:]
             fObj_match['density_scale_history'][:] = density_scale_history[:]
-
     comm.Barrier()
+
+    if args.verbose:
+        print(f"--- {rank_idstr} : Done moving data over to taumatch file ---")
+        print(f"--- {rank_idstr} : Deleting info from original skewers file  ---")
 
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
         OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
                     OTFSkewers.get_skewersy_obj(),
                     OTFSkewers.get_skewersz_obj()]
+        del fObj.attrs['density_scale_delta_max']
+        del fObj.attrs['density_scale_delta_min']
+        del fObj.attrs['tau_target_match']
 
         for i, OTFSkewers_i in enumerate(OTFSkewers_lst):
             skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
             del fObj[skew_key]['taucalc_eff_match']
             del fObj[skew_key]['taucalc_local_match']
+
+    if args.verbose:
+        print(f"--- {rank_idstr} : yayy, we're done ! ---")
 
 if __name__=="__main__":
     main()
