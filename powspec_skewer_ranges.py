@@ -479,7 +479,7 @@ class ChollaOnTheFlySkewers:
         self.dvHubble_y = H * dyproper
         self.dvHubble_z = H * dzproper
 
-    def set_gridinfo(self, datalength_str='density'):
+    def set_gridinfo(self, datalength_str='taucalc_local'):
         '''
         Set grid information by looking at attribute of file object and shape of 
             data sets
