@@ -227,7 +227,7 @@ def main():
     redshift_str = rf"$z = {{{redshift:.4f}}}$"
     x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
     y_redshift = yupp / 3.
-    _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
+    _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift))
 
     # add background grid
     _ = ax.grid(which='both', axis='both', alpha=0.3)

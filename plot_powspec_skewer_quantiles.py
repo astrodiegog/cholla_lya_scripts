@@ -209,13 +209,13 @@ def main():
                 taueff_str += rf"$< {tau_eff_max:.4f}$"
                 x_taueff = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
                 y_taueff = ylow * 3.
-                _ = ax.annotate(taueff_str, xy=(x_taueff, y_taueff), fontsize=20)
+                _ = ax.annotate(taueff_str, xy=(x_taueff, y_taueff))
 
                 # add redshift info
                 redshift_str = rf"$z = {redshift:.3f}$"
                 x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
                 y_redshift = yupp / 3.
-                _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
+                _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift))
 
                 # save figure
                 fName = f"{nOutput:.0f}_{currQuantile_key}.png"
@@ -254,7 +254,7 @@ def main():
     redshift_str = rf"$z = {redshift:.3f}$"
     x_redshift = 10**(np.log10(xlow) + (0.05 * (np.log10(xupp) - np.log10(xlow))))
     y_redshift = yupp / 3.
-    _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift), fontsize=20)
+    _ = ax.annotate(redshift_str, xy=(x_redshift, y_redshift))
 
     # place colorbar
     cbar_ax = fig.add_axes([0.93, 0.106, 0.04, 0.78])
@@ -265,7 +265,7 @@ def main():
     cbar_str = r"$\log_{10} \overline{\tau_{\rm{eff}}}$"
     _ = cbar_ax.set_ylabel(cbar_str, rotation=270)
     _ = cbar_ax.yaxis.set_label_position('right')
-    _ = cbar_ax.yaxis.labelpad = 20
+    _ = cbar_ax.yaxis.labelpad = 24
 
     # add background grid
     _ = ax.grid(which='both', axis='both', alpha=0.3)
