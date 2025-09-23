@@ -864,7 +864,7 @@ def init_taucalc(OTFSkewers, tau_target, nmax, comm, restart=False, verbose=Fals
             if verbose:
                 print(f"--- {rank_idstr} : \t restarting out with lower density scale delta of {density_scale_delta_min:.4e} ---")
         else:
-            if verbose and rank == 0:
+            if verbose:
                 density_scale_delta_min = fObj.attrs['density_scale_delta_min'].item()
                 print(f"--- {rank_idstr} : \t starting out with saved lower density scale delta of {density_scale_delta_min:.4e} ---")
 
@@ -917,6 +917,10 @@ def init_taucalc(OTFSkewers, tau_target, nmax, comm, restart=False, verbose=Fals
     Omega_M, Omega_R = OTFSkewers.Omega_M, OTFSkewers.Omega_R
     Omega_b, H0 = OTFSkewers.Omega_b, OTFSkewers.H0
     w0, wa = OTFSkewers.w0, OTFSkewers.wa
+    Lx_box = OTFSkewers.dx * OTFSkewers.nx
+    Ly_box = OTFSkewers.dy * OTFSkewers.ny
+    Lz_box = OTFSkewers.dz * OTFSkewers.nz
+    Lbox = np.array([Lx_box, Ly_box, Lz_box])
 
     fName_split = OTFSkewers.OTFSkewersfPath.name.split('.')
     fName_match = fName_split[0] + "_taumatch." + fName_split[1]
@@ -937,6 +941,7 @@ def init_taucalc(OTFSkewers, tau_target, nmax, comm, restart=False, verbose=Fals
         _ = fObj.attrs.create('current_a', scale_factor)
         _ = fObj.attrs.create('current_z', redshift)
         _ = fObj.attrs.create('tau_target', tau_target)
+        _ = fObj.attrs.create('Lbox', Lbox)
 
         if f'calctime_{size:.0f}_nprocs_match' not in fObj.keys():
             calctime_arr = np.zeros(size, dtype=np.float64)
