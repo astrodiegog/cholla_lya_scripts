@@ -936,6 +936,7 @@ def init_taucalc(OTFSkewers, tau_target, nmax, comm, restart=False, verbose=Fals
         _ = fObj.attrs.create('Omega_L', Omega_L)
         _ = fObj.attrs.create('Omega_K', Omega_K)
         _ = fObj.attrs.create('Omega_b', Omega_b)
+        _ = fObj.attrs.create('H0', H0)
         _ = fObj.attrs.create('w0', w0)
         _ = fObj.attrs.create('wa', wa)
         _ = fObj.attrs.create('current_a', scale_factor)
