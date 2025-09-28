@@ -41,6 +41,9 @@ def create_parser():
 
     parser.add_argument("skewfname", help='Cholla skewer output file name', type=str)
 
+    parser.add_argument('-p', '--peculiarless', help='Remove peculiar velocities',
+                        action='store_true')
+
     parser.add_argument('-r', '--restart', help='Reset progress bool array', 
                         action='store_true')
 
@@ -444,6 +447,59 @@ class ChollaSkewerCosmoCalculator:
 
         return arr_ghost
 
+    def optical_depth_Hydrogen_nopec(self, densityHI, temp):
+        '''
+        Compute the optical depth for each cell along the line-of-sight w/o 
+            peculiar velocity
+
+        Args:
+            densityHI (arr): ionized Hydrogen comoving density [h2 Msun kpc-3]
+            temp (arr): temperature [K]
+        Returns:
+            tau (arr): optical depth for each cell
+        '''
+        assert densityHI.size == self.n_los
+        assert temp.size == self.n_los
+
+        # convert comoving density to physical density then to cgs
+        densityHI_phys = self.snapCosmoCalc.physical_density(densityHI)
+        densityHI_phys_cgs = self.snapCosmoCalc.density_cosmo2cgs(densityHI_phys) # [g cm-3]
+
+        # calculate column number density & extend to ghost cells
+        nHI_phys_cgs = densityHI_phys_cgs / self.hydroCalc.mp # [cm-3]
+        nHI_phys_ghost_cgs = self.extend_ghostcells(nHI_phys_cgs)
+
+        # set physical velocity as Hubble flow
+        velocity_phys_ghost_cgs = self.vHubbleC_ghost_cgs # [cm s-1]
+
+        # calculate doppler broadening param & extend to ghost cells
+        doppler_param_cgs = self.hydroCalc.Doppler_param_Hydrogen(temp) # [cm s-1]
+        doppler_param_ghost_cgs = self.extend_ghostcells(doppler_param_cgs)
+
+        # calculate Ly-alpha interaction cross section
+        sigma_Lya = np.pi * self.hydroCalc.e * self.hydroCalc.e / self.hydroCalc.me # [cm3 g1 s-2 / g] = [cm3 s-2]
+        sigma_Lya = sigma_Lya * self.hydroCalc.lambda_Lya / self.hydroCalc.c # [cm3 s-2 * cm / (cm s-1)] = [cm3 s-1]
+        sigma_Lya = sigma_Lya / self.snapCosmoHead.Hubble_cgs # [cm3 s-1 / (s-1)] = [cm3]
+        f_12 = 0.416 # oscillator strength
+        sigma_Lya *= f_12
+
+        # initialize optical depths
+        tau_ghost = self.snapCosmoCalc_ghost.create_arr()
+
+        for losid in range(self.n_los_ghost):
+            vH_L, vH_R = self.vHubbleL_ghost_cgs[losid], self.vHubbleR_ghost_cgs[losid]
+            # calculate line center shift in terms of broadening scale
+            y_L = (vH_L - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
+            y_R = (vH_R - velocity_phys_ghost_cgs) / doppler_param_ghost_cgs
+            # [cm3 * # density] = [cm3 * cm-3] = []
+            tau_ghost[losid] = sigma_Lya * np.sum(nHI_phys_ghost_cgs * (erf(y_R) - erf(y_L))) / 2.0
+
+        # clip edges
+        tau = tau_ghost[self.n_ghost : -self.n_ghost]
+
+        return tau
+
+
 
     def optical_depth_Hydrogen(self, densityHI, velocity_pec, temp):
         '''
@@ -740,7 +796,7 @@ class ChollaOnTheFlySkewers:
 #####
 
 
-def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
+def init_taucalc(OTFSkewers, comm, restart = False, verbose=False, nopec=False):
     '''
     Initialize the calculation of the effective optical depth. For each skewers_i axis
         group, create three things:
@@ -757,6 +813,7 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
         restart (bool): (optional) whether to reset progress and set all 
                         taucalc_bool to False
         verbose (bool): (optional) whether to print important information
+        nopec (bool): (optional) whether we remove peculiar velocity or not
     Returns:
         ...
     '''
@@ -765,22 +822,35 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
     size = comm.Get_size()
     rank_idstr = f"Rank {rank:.0f}"
 
+    if nopec:
+        taucalc_bool_key = 'taucalc_nopec_bool'
+        taucalc_eff_key = 'taucalc_nopec_eff'
+        taucalc_local_key = 'taucalc_nopec_local'
+        calctime_key = f'calctime_{size:.0f}_nopec_nprocs'
+        inittime_key = f'innittime_{size:.0f}_nopec_nprocs'
+    else:
+        taucalc_bool_key = 'taucalc_bool'
+        taucalc_eff_key = 'taucalc_eff'
+        taucalc_local_key = 'taucalc_local'
+        calctime_key = f'calctime_{size:.0f}_nprocs'
+        inittime_key = f'innittime_{size:.0f}_nprocs'
+
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
 
         if verbose:
             print(f'--- {rank_idstr} : \t...initializing optical depth calculations for file {OTFSkewers.OTFSkewersfPath} ---')
 
-        if f'calctime_{size:.0f}_nprocs' not in fObj.keys():
+        if calctime_key not in fObj.keys():
             calctime_arr = np.zeros(size, dtype=np.float64)
-            fObj.create_dataset(f'calctime_{size:.0f}_nprocs', data=calctime_arr)
+            fObj.create_dataset(calctime_key, data=calctime_arr)
         elif restart:
-            fObj[f'calctime_{size:.0f}_nprocs'][:] = 0.
+            fObj[calctime_key][:] = 0.
 
-        if f'inittime_{size:.0f}_nprocs' not in fObj.keys():
+        if inittime_key not in fObj.keys():
             calctime_arr = np.zeros(size, dtype=np.float64)
-            fObj.create_dataset(f'inittime_{size:.0f}_nprocs', data=calctime_arr)
+            fObj.create_dataset(inittime_key, data=calctime_arr)
         elif restart:
-            fObj[f'inittime_{size:.0f}_nprocs'][:] = 0.
+            fObj[inittime_key][:] = 0.
 
         OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
                         OTFSkewers.get_skewersy_obj(),
@@ -799,17 +869,17 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
             taucalc_local = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
                                         dtype=np.float64)
 
-            if 'taucalc_bool' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_bool', data=taucalc_bool)
+            if taucalc_bool_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_bool_key, data=taucalc_bool)
             elif restart:
-                fObj[skew_key]['taucalc_bool'][:] = False
+                fObj[skew_key][taucalc_bool_key][:] = False
 
-            if 'taucalc_eff' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_eff', data=taucalc_eff)
+            if taucalc_eff_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_eff_key, data=taucalc_eff)
 
 
-            if 'taucalc_local' not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset('taucalc_local', data=taucalc_local)
+            if taucalc_eff_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_eff_key, data=taucalc_local)
 
 
     if verbose:
@@ -818,7 +888,7 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False):
     return
 
 
-def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=False):
+def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=False, nopec=False):
     '''
     Calculate the effective optical depth for each skewer along an axis
 
@@ -828,6 +898,7 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=Fal
         comm (mpi4py.MPI.Comm): communication context
         precision (np type): (optional) numpy precision to use
         verbose (bool): (optional) whether to print important information
+        nopec (bool): (optional) whether we remove peculiar velocity or not
     Returns:
         ...
     '''
@@ -837,8 +908,17 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=Fal
     size = comm.Get_size()
     rank_idstr = f"Rank {rank:.0f}"
 
+    if nopec:
+        taucalc_bool_key = 'taucalc_nopec_bool'
+        taucalc_eff_key = 'taucalc_nopec_eff'
+        taucalc_local_key = 'taucalc_nopec_local'
+    else:
+        taucalc_bool_key = 'taucalc_bool'
+        taucalc_eff_key = 'taucalc_eff'
+        taucalc_local_key = 'taucalc_local'
+
     with h5py.File(OTFSkewers_i.fPath, 'r+', driver='mpio', comm=comm) as fObj:
-        taucalc_bool = fObj[skew_key]['taucalc_bool']
+        taucalc_bool = fObj[skew_key][taucalc_bool_key]
         curr_progress = np.sum(taucalc_bool) / taucalc_bool.size
         if verbose:
             print(f"--- {rank_idstr} : Starting calculations at {100 * curr_progress:.2f} % complete along ", OTFSkewers_i.OTFSkewersiHead.skew_key, "---")
@@ -849,22 +929,25 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=Fal
         # loop over each skewer
         for nSkewerID in skewerIDs_rank:
             # skip skewers whose optical depth already calculated
-            if (fObj[skew_key]['taucalc_bool'][nSkewerID]):
+            if (fObj[skew_key][taucalc_bool_key][nSkewerID]):
                 continue
 
             # grab skewer data & calculate effective optical depth
-            vel = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('los_velocity')[nSkewerID, :]
             densityHI = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('HI_density')[nSkewerID, :]
             temp = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('temperature')[nSkewerID, :]
 
-            taus = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp)
+            if nopec:
+                taus = skewCosmoCalc.optical_depth_Hydrogen_nopec(densityHI, temp)
+            else:
+                vel = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('los_velocity')[nSkewerID, :]
+                taus = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp)
             fluxes = np.exp(- taus)
             meanF = np.mean(fluxes)
 
             # update bool arr, and tau arrs
-            fObj[skew_key]['taucalc_bool'][nSkewerID] = True
-            fObj[skew_key]['taucalc_eff'][nSkewerID] = -1. * np.log(meanF)
-            fObj[skew_key]['taucalc_local'][nSkewerID] = taus
+            fObj[skew_key][taucalc_bool_key][nSkewerID] = True
+            fObj[skew_key][taucalc_eff_key][nSkewerID] = -1. * np.log(meanF)
+            fObj[skew_key][taucalc_local_key][nSkewerID] = taus
 
 
     if verbose:
@@ -902,7 +985,10 @@ def main():
     if args.verbose and rank == 0:
         print(f"{rank_idstr} : Using {size:.0f} processes !")
         print(f"--- {rank_idstr} : Args have been broadcasted! ---")
-
+        if args.peculiarless:
+            print(f'--- {rank_idstr} : Not including peculiar velocities ! ---')
+        else:
+            print(f'--- {rank_idstr} : Including peculiar velocities ! ---')
 
     precision = np.float64
 
@@ -918,7 +1004,7 @@ def main():
 
     # add progress attribute, boolean mask for whether tau is calculated, and tau itself
     t_init_start = MPI.Wtime()
-    init_taucalc(OTFSkewers, comm, restart=args.restart, verbose=args.verbose)
+    init_taucalc(OTFSkewers, comm, restart=args.restart, verbose=args.verbose, nopec=args.peculiarless)
     t_init_end = MPI.Wtime()
     if args.verbose:
         print(f"--- {rank_idstr} : Took {t_init_end - t_init_start:.4e} secs to initialize info ---")
@@ -949,18 +1035,18 @@ def main():
 
     t_start = MPI.Wtime()
 
-    taucalc(OTFSkewers_x, skewCosmoCalc_x, comm, precision, args.verbose)
+    taucalc(OTFSkewers_x, skewCosmoCalc_x, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_x = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_x - t_start:.4e} secs to calculate tau along x ---")
 
 
-    taucalc(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose)
+    taucalc(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_y = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_y - t_x:.4e} secs to calculate tau along y ---")
 
-    taucalc(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose)
+    taucalc(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_z = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_z - t_y:.4e} secs to calculate tau along z ---")
@@ -972,8 +1058,12 @@ def main():
         if args.verbose:
             print(f"--- {rank_idstr} : Took {t_end - t_start:.4e} secs for entire calculation ---")
 
-        fObj[f'calctime_{size:.0f}_nprocs'][rank] = t_end - t_start
-        fObj[f'inittime_{size:.0f}_nprocs'][rank] = t_init_end - t_init_start
+        if args.peculiarless:
+            fObj[f'calctime_{size:.0f}_nopec_nprocs'][rank] = t_end - t_start
+            fObj[f'inittime_{size:.0f}_nopec_nprocs'][rank] = t_init_end - t_init_start
+        else:
+            fObj[f'calctime_{size:.0f}_nprocs'][rank] = t_end - t_start
+            fObj[f'inittime_{size:.0f}_nprocs'][rank] = t_init_end - t_init_start
 
         
 
