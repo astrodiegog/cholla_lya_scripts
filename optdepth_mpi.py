@@ -827,13 +827,13 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False, nopec=False):
         taucalc_eff_key = 'taucalc_nopec_eff'
         taucalc_local_key = 'taucalc_nopec_local'
         calctime_key = f'calctime_{size:.0f}_nopec_nprocs'
-        inittime_key = f'innittime_{size:.0f}_nopec_nprocs'
+        inittime_key = f'inittime_{size:.0f}_nopec_nprocs'
     else:
         taucalc_bool_key = 'taucalc_bool'
         taucalc_eff_key = 'taucalc_eff'
         taucalc_local_key = 'taucalc_local'
         calctime_key = f'calctime_{size:.0f}_nprocs'
-        inittime_key = f'innittime_{size:.0f}_nprocs'
+        inittime_key = f'inittime_{size:.0f}_nprocs'
 
     with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
 
@@ -877,9 +877,8 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False, nopec=False):
             if taucalc_eff_key not in fObj[skew_key].keys():
                 fObj[skew_key].create_dataset(taucalc_eff_key, data=taucalc_eff)
 
-
-            if taucalc_eff_key not in fObj[skew_key].keys():
-                fObj[skew_key].create_dataset(taucalc_eff_key, data=taucalc_local)
+            if taucalc_local_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_local_key, data=taucalc_local)
 
 
     if verbose:
