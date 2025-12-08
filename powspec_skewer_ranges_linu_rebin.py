@@ -250,13 +250,15 @@ class ChollaFluxPowerSpectrumVelRebinHead:
 
     Values are returned in code units unless otherwise specified
     '''
-    def __init__(ChollaFPSHead, linu_newbin):
+    def __init__(self, ChollaFPSHead, linu_newbin):
         self.chFPSHead = ChollaFPSHead
         self.linu_bin = linu_newbin
 
         self.n_urebin_los = int(self.linu_bin.size)
-        self.n_urebin_fft = int((self.n_linubinedges / 2) + 1)
-        self.urebin_max = self.linu_bin[-1]
+        self.n_urebin_fft = int((self.n_urebin_los / 2) + 1)
+
+        durebin = np.mean(np.diff(self.linu_bin))
+        self.urebin_max = self.n_urebin_los * durebin
 
     def get_kvals_fft(self, dtype=np.float32):
         '''
@@ -268,8 +270,8 @@ class ChollaFluxPowerSpectrumVelRebinHead:
             kcenters_fft (arr): k mode centers array
         '''
 
-        kcenters_fft = np.zeros(self.n_rebin_fft, dtype=dtype)
-        iter_arr = np.arange(self.n_rebin_fft, dtype=dtype)
+        kcenters_fft = np.zeros(self.n_urebin_fft, dtype=dtype)
+        iter_arr = np.arange(self.n_urebin_fft, dtype=dtype)
 
         kcenters_fft[:] = (2. * np.pi * iter_arr) / (self.urebin_max)
 
@@ -303,7 +305,6 @@ class ChollaFluxPowerSpectrumVelRebinHead:
             flux_mean = np.mean(fluxes)
 
         # calculate original velocity bins
-        self.linu_bin = linu_newbin
         iter_arr = np.arange(self.chFPSHead.n_los)
         u_bin = iter_arr * self.chFPSHead.dvHubble
 
@@ -318,7 +319,7 @@ class ChollaFluxPowerSpectrumVelRebinHead:
             # evaluate flux fluctuations at new bins
             dFlux_skew_rebin = np.interp(x = self.linu_bin,
                                          xp = u_bin,
-                                         fp = dFlux_skew
+                                         fp = dFlux_skew,
                                          period = self.chFPSHead.u_max)
 
             # perform fft & calculate amplitude of fft
@@ -754,12 +755,12 @@ def main():
     assert args.linu_min < args.linu_max
     assert args.lindu > 0.
     assert args.lindu < (args.linu_max - args.linu_min) / 2. # ensure at least two bins
-    linu_newbin = np.arange(args.linu_min, args.linu_max + args.lindu, args.lindu)
+    linu_newbin = np.arange(args.linu_min, args.linu_max, args.lindu)
     n_linubinedges = int(linu_newbin.size)
     n_linubins = int(n_linubinedges - 1.)
     if args.verbose:
         velinfo_str = f"--- New velocity domain (in km s-1) spans from {args.linu_min:.3e}"
-        velinfo_str += f"to {args.linu_max:.3e} in steps of {lindu:.3e} for a total of {n_linubinedges:.0f} bin edges ---"
+        velinfo_str += f"to {args.linu_max:.3e} in steps of {args.lindu:.3e} for a total of {n_linubinedges:.0f} bin edges ---"
         print(velinfo_str)
         print(f'--- Velocity bin (in km s-1): {linu_newbin} ---')
 
@@ -922,7 +923,6 @@ def main():
         print(f"--- We have {nskewers_inbounds:.0f} skewers falling within effective optical depth range from total {nskewers_tot:.0f} skewers")
     assert nskewers_inbounds > 0
 
-
     # index of (0, nskewers_x) corresponds to x-axis
     # index of (nskewers_x, nskewers_x + nskewers_y) corresponds to y-axis
     # index of (nskewers_x + nskewers_y, nskewers_x + nskewers_y + nskewers_z) corresponds to z-axis
@@ -952,7 +952,8 @@ def main():
     tau_local_y = OTFSkewers_y.get_skeweralldata(tau_local_key, dtype=precision)
     tau_local_z = OTFSkewers_z.get_skeweralldata(tau_local_key, dtype=precision)
 
-    if not outfile_exists:
+    #if not outfile_exists:
+    if None:
         # group the local optical depths
         nCells_x = int(nskewers_x * nCells[0])
         nCells_y = int(nskewers_y * nCells[1])
@@ -1051,9 +1052,9 @@ def main():
     dvHubble_z = chSnapCosmoHead.dvHubble(OTFSkewers.dz)
 
     # initialize flux power spectrum
-    FPS_urebin_x = np.zeros(n_linubinedges, dtype=precision)
-    FPS_urebin_y = np.zeros(n_linubinedges, dtype=precision)
-    FPS_urebin_z = np.zeros(n_linubinedges, dtype=precision)
+    FPS_urebin_x = np.zeros((n_linubinedges//2) + 1, dtype=precision)
+    FPS_urebin_y = np.zeros((n_linubinedges//2) + 1, dtype=precision)
+    FPS_urebin_z = np.zeros((n_linubinedges//2) + 1, dtype=precision)
     if args.nonrebinned:
         FPS_x = np.zeros(nFFTs[0], dtype=precision)
         FPS_y = np.zeros(nFFTs[1], dtype=precision)
@@ -1072,9 +1073,12 @@ def main():
 
     if not outfile_exists:
         # calculate kmodes
-        kvals_fft_x = FPSHead_x.get_kvals_fft(dtype=precision)
-        kvals_fft_y = FPSHead_y.get_kvals_fft(dtype=precision)
-        kvals_fft_z = FPSHead_z.get_kvals_fft(dtype=precision)
+        kvals_urebin_fft = FPSuRebinHead_x.get_kvals_fft(dtype=precision)
+
+        if args.nonrebinned:
+            kvals_fft_x = FPSHead_x.get_kvals_fft(dtype=precision)
+            kvals_fft_y = FPSHead_y.get_kvals_fft(dtype=precision)
+            kvals_fft_z = FPSHead_z.get_kvals_fft(dtype=precision)
 
     if args.verbose:
         print("--- Found k-modes along each axis, now moving on to actually performing flux power spectrum calculation ---")
@@ -1102,7 +1106,7 @@ def main():
                                           precision=precision)
         FPS_urebin_y += calc_FPS_y
 
-        if args.args.nonrebinned:
+        if args.nonrebinned:
             _, calc_FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
                                           flux_mean_global=med_flux_eff_inbounds,
                                           precision=precision)
@@ -1116,7 +1120,7 @@ def main():
                                           precision=precision)
         FPS_urebin_z += calc_FPS_z
 
-        if args.args.nonrebinned:
+        if args.nonrebinned:
             _, calc_FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
                                           flux_mean_global=med_flux_eff_inbounds,
                                           precision=precision)
@@ -1155,25 +1159,26 @@ def main():
             _ = fObj.create_dataset('k_x', data=kvals_fft_x)
             _ = fObj.create_dataset('k_y', data=kvals_fft_y)
             _ = fObj.create_dataset('k_z', data=kvals_fft_z)
-            _ = fObj.create_dataset('k_urebin', data=linu_newbin)
+            _ = fObj.create_dataset('k_urebin', data=kvals_urebin_fft)
             _ = fObj.attrs.create('nranges', 0)
             _ = fObj.attrs.create('nquantiles', 0)
 
             # optical depth info
-            _ = fObj.attrs.create('tau_eff_mean', tau_eff_mean)
-            _ = fObj.attrs.create('tau_eff_upp', tau_eff_upp)
-            _ = fObj.attrs.create('tau_eff_med', tau_eff_med)
-            _ = fObj.attrs.create('tau_eff_low', tau_eff_low)
+            if None:
+                _ = fObj.attrs.create('tau_eff_mean', tau_eff_mean)
+                _ = fObj.attrs.create('tau_eff_upp', tau_eff_upp)
+                _ = fObj.attrs.create('tau_eff_med', tau_eff_med)
+                _ = fObj.attrs.create('tau_eff_low', tau_eff_low)
 
-            _ = fObj.attrs.create('tau_mean_flux_eff', tau_mean_flux_eff)
-            _ = fObj.attrs.create('tau_upp_flux_eff', tau_upp_flux_eff)
-            _ = fObj.attrs.create('tau_med_flux_eff', tau_med_flux_eff)
-            _ = fObj.attrs.create('tau_low_flux_eff', tau_low_flux_eff)
+                _ = fObj.attrs.create('tau_mean_flux_eff', tau_mean_flux_eff)
+                _ = fObj.attrs.create('tau_upp_flux_eff', tau_upp_flux_eff)
+                _ = fObj.attrs.create('tau_med_flux_eff', tau_med_flux_eff)
+                _ = fObj.attrs.create('tau_low_flux_eff', tau_low_flux_eff)
 
-            _ = fObj.attrs.create('tau_mean_flux_local', tau_mean_flux_local)
-            _ = fObj.attrs.create('tau_upp_flux_local', tau_upp_flux_local)
-            _ = fObj.attrs.create('tau_med_flux_local', tau_med_flux_local)
-            _ = fObj.attrs.create('tau_low_flux_local', tau_low_flux_local)
+                _ = fObj.attrs.create('tau_mean_flux_local', tau_mean_flux_local)
+                _ = fObj.attrs.create('tau_upp_flux_local', tau_upp_flux_local)
+                _ = fObj.attrs.create('tau_med_flux_local', tau_med_flux_local)
+                _ = fObj.attrs.create('tau_low_flux_local', tau_low_flux_local)
 
 
         
