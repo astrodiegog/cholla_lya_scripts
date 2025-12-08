@@ -82,11 +82,14 @@ def create_parser():
 
     parser.add_argument("optdepthupp", help='Upper effective optical depth limit to bin', type=float)
 
-    parser.add_argument("linu_min", help='Lower velocity in new velocity bin', type=float)
+    parser.add_argument("linu_min", help='Lower velocity in km s-1 for new velocity bins', type=float)
 
-    parser.add_argument("linu_max", help='Maximum velocity in new velocity bin', type=float)
+    parser.add_argument("linu_max", help='Maximum velocity in km s-1 for new velocity bins', type=float)
 
-    parser.add_argument("lindu", help='Differential velocity between velocity bins', type=float)
+    parser.add_argument("lindu", help='Differential velocity in km s-1between velocity bins', type=float)
+
+    parser.add_argument('-n', '--nonrebinned', help='Whether to include the nonrebinned FPS values or not', 
+                        action='store_true')
 
     parser.add_argument('-o', '--outdir', help='Output directory for analysis files', type=str)
 
@@ -232,6 +235,110 @@ class ChollaSnapCosmologyHead:
 ###
 # Calculations related to the geometry along an axis for a power spectrum calculation
 ###
+
+# ChollaFluxPowerSpectrumVelRebinHead --> holds rebinning info
+class ChollaFluxPowerSpectrumVelRebinHead:
+    '''
+    Cholla Flux Power Spectrum - Velocity Rebin - Head
+
+    Holds information regarding the power spectrum calculation where flux
+        fluctuations are rebinned ane evaluated in a new velocity space
+
+        Initialized with:
+        - ChollaFPSHead (ChollaFluxPowerSpectrumHead): info on flux power spectrum
+        - linu_newbin (arr) : new array at which to evaluate flux fluctuations
+
+    Values are returned in code units unless otherwise specified
+    '''
+    def __init__(ChollaFPSHead, linu_newbin):
+        self.chFPSHead = ChollaFPSHead
+        self.linu_bin = linu_newbin
+
+        self.n_urebin_los = int(self.linu_bin.size)
+        self.n_urebin_fft = int((self.n_linubinedges / 2) + 1)
+        self.urebin_max = self.linu_bin[-1]
+
+    def get_kvals_fft(self, dtype=np.float32):
+        '''
+        Return k-modes from the Fourier Transform
+
+        Args:
+            dtype (np type): (optional) numpy precision to use
+        Returns:
+            kcenters_fft (arr): k mode centers array
+        '''
+
+        kcenters_fft = np.zeros(self.n_rebin_fft, dtype=dtype)
+        iter_arr = np.arange(self.n_rebin_fft, dtype=dtype)
+
+        kcenters_fft[:] = (2. * np.pi * iter_arr) / (self.urebin_max)
+
+        # I would like to compare against np.fft.rfftfreq
+
+        return kcenters_fft
+
+    def get_FPS(self, local_opticaldepths, flux_mean_global=None, precision=np.float64):
+        '''
+        Return the Flux Power Spectrum given the local optical depths.
+            Expect 2-D array of shape (number skewers, line-of-sight cells)
+
+        Args:
+            local_opticaldepths (arr): local optical depths of all skewers
+            flux_mean_global (float): (optional) global mean flux to scale local deviations
+            precision (np type): (optional) numpy precision to use
+        Return:
+            kmode_fft (arr): Fourier Transform k mode array
+            P_k_mean (arr): mean transmitted flux power spectrum within kmode edges
+        '''
+        assert local_opticaldepths.ndim == 2
+
+        n_skews = local_opticaldepths.shape[0]
+
+        # calculate local transmitted flux (& its mean)
+        fluxes = np.exp(-local_opticaldepths)
+        if flux_mean_global:
+            assert flux_mean_global > 0
+            flux_mean = flux_mean_global
+        else:
+            flux_mean = np.mean(fluxes)
+
+        # calculate original velocity bins
+        self.linu_bin = linu_newbin
+        iter_arr = np.arange(self.chFPSHead.n_los)
+        u_bin = iter_arr * self.chFPSHead.dvHubble
+
+        # initialize total power array & delta F avg arrays
+        delta_F_avg = np.zeros(self.n_urebin_fft , dtype=precision)
+        P_k_tot = np.zeros(self.n_urebin_fft, dtype=precision)
+
+        for nSkewerID in range(n_skews):
+            # calculate flux fluctuation 
+            dFlux_skew = (fluxes[nSkewerID] - flux_mean) / flux_mean
+
+            # evaluate flux fluctuations at new bins
+            dFlux_skew_rebin = np.interp(x = self.linu_bin,
+                                         xp = u_bin,
+                                         fp = dFlux_skew
+                                         period = self.chFPSHead.u_max)
+
+            # perform fft & calculate amplitude of fft
+            fft = np.fft.rfft(dFlux_skew_rebin)
+            fft2 = (fft.imag * fft.imag) + (fft.real * fft.real)
+
+            # take avg & scale by umax
+            delta_F_avg = fft2 / self.n_urebin_los / self.n_urebin_los
+            P_k = self.urebin_max * delta_F_avg
+            P_k_tot += P_k
+
+        # average out by the number of skewers
+        P_k_mean = P_k_tot / n_skews
+
+        # grab k-mode values
+        kmode_fft = self.get_kvals_fft(precision)
+
+        return (kmode_fft, P_k_mean)
+
+
 # ChollaFluxPowerSpectrumHead    --> hold nfft and methods to get related k-mode arrays
 
 class ChollaFluxPowerSpectrumHead:
@@ -639,10 +746,22 @@ def main():
         print("we're verbose in this mf !")
         print(f"--- We are looking at skewer file : {args.skewfname} ---")
         
-        print(f"--- We have a range from {args.optdepthlow:.3e} to {args.optdepthupp:.3e}---")
-
+        print(f"--- We have optical depth range from {args.optdepthlow:.3e} to {args.optdepthupp:.3e}---")
 
     precision = np.float64
+
+    # ensure new bin ranges + stepsize makes sense
+    assert args.linu_min < args.linu_max
+    assert args.lindu > 0.
+    assert args.lindu < (args.linu_max - args.linu_min) / 2. # ensure at least two bins
+    linu_newbin = np.arange(args.linu_min, args.linu_max + args.lindu, args.lindu)
+    n_linubinedges = int(linu_newbin.size)
+    n_linubins = int(n_linubinedges - 1.)
+    if args.verbose:
+        velinfo_str = f"--- New velocity domain (in km s-1) spans from {args.linu_min:.3e}"
+        velinfo_str += f"to {args.linu_max:.3e} in steps of {lindu:.3e} for a total of {n_linubinedges:.0f} bin edges ---"
+        print(velinfo_str)
+        print(f'--- Velocity bin (in km s-1): {linu_newbin} ---')
 
     # Convert argument input to Path() & get its absolute path
     skewer_fPath = Path(args.skewfname).resolve()
@@ -660,7 +779,7 @@ def main():
         print(f"--- Placing output files in : {outdir_dirPath} ---")
 
     # get analysis file name
-    outfile_fname = f"{nOutput:.0f}_fluxpowerspectrum_optdepthbin.h5"
+    outfile_fname = f"{nOutput:.0f}_fluxpowerspectrum_urebin_optdepthbin.h5"
     outfile_fPath = outdir_dirPath / Path(outfile_fname)
     outfile_exists = outfile_fPath.is_file()
 
@@ -675,6 +794,10 @@ def main():
             calc_string += f'--- Mean effective flux + Mean effective flux optical depth ---'
             calc_string += f'--- Mean local flux + Mean local flux optical depth ---'
             print(calc_string)
+        if args.nonrebinned:
+            print(f'--- Calculating + saving FPS without rebinning ---')
+        else:
+            print(f'--- Not calculating the original / un-rebinned FPS---')
 
 
     # ensure limits are reasonable
@@ -724,11 +847,12 @@ def main():
     nCells[0] = int(OTFSkewers.nx)
     nCells[1] = int(OTFSkewers.ny)
     nCells[2] = int(OTFSkewers.nz)
-    # create nFFT array
-    nFFTs = np.zeros(3, dtype=np.uint64)
-    nFFTs[0] = int(1. + nCells[0] / 2.)
-    nFFTs[1] = int(1. + nCells[1] / 2.)
-    nFFTs[2] = int(1. + nCells[2] / 2.)
+    if args.nonrebinned:
+        # create nFFT array
+        nFFTs = np.zeros(3, dtype=np.uint64)
+        nFFTs[0] = int(1. + nCells[0] / 2.)
+        nFFTs[1] = int(1. + nCells[1] / 2.)
+        nFFTs[2] = int(1. + nCells[2] / 2.)
     # create nstrides arrays
     nstrides = np.zeros(3, dtype=precision)
     nstrides[0] = OTFSkewers.nstride_x
@@ -927,14 +1051,24 @@ def main():
     dvHubble_z = chSnapCosmoHead.dvHubble(OTFSkewers.dz)
 
     # initialize flux power spectrum
-    FPS_x = np.zeros(nFFTs[0], dtype=precision)
-    FPS_y = np.zeros(nFFTs[1], dtype=precision)
-    FPS_z = np.zeros(nFFTs[2], dtype=precision)
+    FPS_urebin_x = np.zeros(n_linubinedges, dtype=precision)
+    FPS_urebin_y = np.zeros(n_linubinedges, dtype=precision)
+    FPS_urebin_z = np.zeros(n_linubinedges, dtype=precision)
+    if args.nonrebinned:
+        FPS_x = np.zeros(nFFTs[0], dtype=precision)
+        FPS_y = np.zeros(nFFTs[1], dtype=precision)
+        FPS_z = np.zeros(nFFTs[2], dtype=precision)
 
     # create Flux Power Spectrum object
     FPSHead_x = ChollaFluxPowerSpectrumHead(nCells[0], dvHubble_x)
     FPSHead_y = ChollaFluxPowerSpectrumHead(nCells[1], dvHubble_y)
     FPSHead_z = ChollaFluxPowerSpectrumHead(nCells[2], dvHubble_z)
+
+    # create Flux Power Spectrum Rebinning object
+    FPSuRebinHead_x = ChollaFluxPowerSpectrumVelRebinHead(FPSHead_x, linu_newbin)
+    FPSuRebinHead_y = ChollaFluxPowerSpectrumVelRebinHead(FPSHead_y, linu_newbin)
+    FPSuRebinHead_z = ChollaFluxPowerSpectrumVelRebinHead(FPSHead_z, linu_newbin)
+
 
     if not outfile_exists:
         # calculate kmodes
@@ -948,24 +1082,45 @@ def main():
 
     if nskews_x_inbounds:
         tau_local_x_inbounds = tau_local_x_inbounds.reshape((nskews_x_inbounds, nCells[0]))
-        _, calc_FPS_x = FPSHead_x.get_FPS(tau_local_x_inbounds,
+
+        _, calc_FPS_x = FPSuRebinHead_x.get_FPS(tau_local_x_inbounds,
+                                                flux_mean_global=med_flux_eff_inbounds,
+                                                precision=precision)
+        FPS_urebin_x += calc_FPS_x
+
+        if args.nonrebinned:
+            _, calc_FPS_x = FPSHead_x.get_FPS(tau_local_x_inbounds,
                                           flux_mean_global=med_flux_eff_inbounds, 
                                           precision=precision)
-        FPS_x += calc_FPS_x
+            FPS_x += calc_FPS_x
 
     if nskews_y_inbounds:
         tau_local_y_inbounds = tau_local_y_inbounds.reshape((nskews_y_inbounds, nCells[1]))
-        _, calc_FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
+
+        _, calc_FPS_y = FPSuRebinHead_y.get_FPS(tau_local_y_inbounds,
                                           flux_mean_global=med_flux_eff_inbounds,
                                           precision=precision)
-        FPS_y += calc_FPS_y
+        FPS_urebin_y += calc_FPS_y
+
+        if args.args.nonrebinned:
+            _, calc_FPS_y = FPSHead_y.get_FPS(tau_local_y_inbounds,
+                                          flux_mean_global=med_flux_eff_inbounds,
+                                          precision=precision)
+            FPS_y += calc_FPS_y
 
     if nskews_z_inbounds:    
         tau_local_z_inbounds = tau_local_z_inbounds.reshape((nskews_z_inbounds, nCells[2]))
-        _, calc_FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
+
+        _, calc_FPS_z = FPSuRebinHead_z.get_FPS(tau_local_z_inbounds,
                                           flux_mean_global=med_flux_eff_inbounds,
                                           precision=precision)
-        FPS_z += calc_FPS_z
+        FPS_urebin_z += calc_FPS_z
+
+        if args.args.nonrebinned:
+            _, calc_FPS_z = FPSHead_z.get_FPS(tau_local_z_inbounds,
+                                          flux_mean_global=med_flux_eff_inbounds,
+                                          precision=precision)
+            FPS_z += calc_FPS_z
 
     
     if args.verbose:
@@ -1000,6 +1155,7 @@ def main():
             _ = fObj.create_dataset('k_x', data=kvals_fft_x)
             _ = fObj.create_dataset('k_y', data=kvals_fft_y)
             _ = fObj.create_dataset('k_z', data=kvals_fft_z)
+            _ = fObj.create_dataset('k_urebin', data=linu_newbin)
             _ = fObj.attrs.create('nranges', 0)
             _ = fObj.attrs.create('nquantiles', 0)
 
@@ -1037,9 +1193,14 @@ def main():
         _ = range_group.attrs.create('tau_mean_flux_eff_inrange', tau_mean_flux_eff_inbounds)
 
         _ = range_group.create_dataset('indices', data=indx_all_inbounds)
-        _ = range_group.create_dataset('FPS_x', data=FPS_x)
-        _ = range_group.create_dataset('FPS_y', data=FPS_y)
-        _ = range_group.create_dataset('FPS_z', data=FPS_z)
+        _ = range_group.create_dataset('FPS_urebin_x', data=FPS_urebin_x)
+        _ = range_group.create_dataset('FPS_urebin_y', data=FPS_urebin_y)
+        _ = range_group.create_dataset('FPS_urebin_z', data=FPS_urebin_z)
+
+        if args.nonrebinned:
+            _ = range_group.create_dataset('FPS_x', data=FPS_x)
+            _ = range_group.create_dataset('FPS_y', data=FPS_y)
+            _ = range_group.create_dataset('FPS_z', data=FPS_z)
 
         _ = fObj.attrs.modify('nranges', int(curr_nranges+1))
 
