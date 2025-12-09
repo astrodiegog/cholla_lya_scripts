@@ -84,7 +84,7 @@ def create_parser():
 
     parser.add_argument("u_max_stretch", help='Maximum velocity in km s-1 for new velocity domain', type=float)
 
-    parser.add_argument('-n', '--nonstreched', help='Whether to include the nonstretched FPS values or not', 
+    parser.add_argument('-n', '--nonstretched', help='Whether to include the nonstretched FPS values or not', 
                         action='store_true')
 
     parser.add_argument('-o', '--outdir', help='Output directory for analysis files', type=str)
