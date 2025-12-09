@@ -242,7 +242,8 @@ class ChollaFluxPowerSpectrumVelStretchHead:
 
         Initialized with:
         - ChollaFPSHead (ChollaFluxPowerSpectrumHead): info on flux power spectrum
-        - linu_newbin (arr) : new array at which to evaluate flux fluctuations
+        - u_max_stretch (float) : maximum velocity to stretch to, will mirror flux 
+            fluctuations about the end
 
     Values are returned in code units unless otherwise specified
     '''
@@ -251,22 +252,21 @@ class ChollaFluxPowerSpectrumVelStretchHead:
         self.ustretch_max = u_max_stretch
 
         # make sure we are stretching and not clipping
-        assert self.chFPSHead.dvHubble * (self.chFPSHead.n_los-1.) < self.u_max_stretch
+        assert self.chFPSHead.dvHubble * (self.chFPSHead.n_los-1.) < self.ustretch_max
 
-        self.u_oldstep_newmax = np.arange(0., self.u_max_stretch, 
+        self.u_oldstep_newmax = np.arange(0., self.ustretch_max, 
                                           self.chFPSHead.dvHubble)
 
         self.n_ustretch_los = self.u_oldstep_newmax.size
         self.n_cells2mirror = int(self.n_ustretch_los - self.chFPSHead.n_los)
-
-        self.n_ustretch_los = int(self.linu_bin.size)
         self.n_ustretch_fft = int((self.n_ustretch_los / 2) + 1)
 
         # create indexing array to mirror at end
         iter_arr = np.arange(self.chFPSHead.n_los)
         self.iter_arr_2stretch = np.arange(self.n_ustretch_los, dtype=np.int64)
         self.iter_arr_2stretch[ : self.chFPSHead.n_los ] = iter_arr
-        self.iter_arr_2stretch[ self.chFPSHead.n_los : ] = iter_arr[ -(n_cells2mirror + 1) : -1][::-1]
+        self.iter_arr_2stretch[ self.chFPSHead.n_los : ] = iter_arr[ -2 : -(self.n_cells2mirror+2) : -1]
+        #self.iter_arr_2stretch[ self.chFPSHead.n_los : ] = iter_arr[ -(self.n_cells2mirror + 1) : -1][::-1]
 
 
     def get_kvals_fft(self, dtype=np.float32):
@@ -1054,9 +1054,9 @@ def main():
     FPSHead_z = ChollaFluxPowerSpectrumHead(nCells[2], dvHubble_z)
 
     # create Flux Power Spectrum Stretched object
-    FPSuStretchHead_x = ChollaFluxPowerSpectrumVelStretchHead(FPSHead_x, linu_newbin)
-    FPSuStretchHead_y = ChollaFluxPowerSpectrumVelStretchHead(FPSHead_y, linu_newbin)
-    FPSuStretchHead_z = ChollaFluxPowerSpectrumVelStretchHead(FPSHead_z, linu_newbin)
+    FPSuStretchHead_x = ChollaFluxPowerSpectrumVelStretchHead(FPSHead_x, args.u_max_stretch)
+    FPSuStretchHead_y = ChollaFluxPowerSpectrumVelStretchHead(FPSHead_y, args.u_max_stretch)
+    FPSuStretchHead_z = ChollaFluxPowerSpectrumVelStretchHead(FPSHead_z, args.u_max_stretch)
 
     # initialize flux power spectrum arrays
     FPS_ustretch_x = np.zeros(FPSuStretchHead_x.n_ustretch_fft, dtype=precision)
@@ -1066,7 +1066,6 @@ def main():
         FPS_x = np.zeros(nFFTs[0], dtype=precision)
         FPS_y = np.zeros(nFFTs[1], dtype=precision)
         FPS_z = np.zeros(nFFTs[2], dtype=precision)
-
 
 
     if not outfile_exists:
