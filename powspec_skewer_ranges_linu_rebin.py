@@ -84,7 +84,7 @@ def create_parser():
 
     parser.add_argument("linu_min", help='Lower velocity in km s-1 for new velocity bins', type=float)
 
-    parser.add_argument("linu_max", help='Maximum velocity in km s-1 for new velocity bins', type=float)
+    parser.add_argument("n_linu", help='Number of new velocity bins', type=float)
 
     parser.add_argument("lindu", help='Differential velocity in km s-1between velocity bins', type=float)
 
@@ -260,6 +260,39 @@ class ChollaFluxPowerSpectrumVelRebinHead:
         durebin = np.mean(np.diff(self.linu_bin))
         self.urebin_max = self.n_urebin_los * durebin
 
+        self.need2mirrorend = self.chFPSHead.u_max < self.urebin_max
+
+        # mirror end to match up to new umax
+        if self.need2mirrorend:
+            # create velocity bins from the new ranges with the old steps
+            self.u_oldstep_newmax = np.arange(self.linu_bin[0], self.urebin_max,
+                                         self.chFPSHead.dvHubble)
+            n_ustretch_los = self.u_oldstep_newmax.size
+            self.n_newdomaincells = int(n_ustretch_los - self.chFPSHead.n_los)  
+            
+            # create indexing array to mirror the end
+            iter_arr = np.arange(self.chFPSHead.n_los)
+            self.iter_arr_mirror = np.arange(n_ustretch_los, dtype=np.int64)
+            self.iter_arr_mirror[ : self.chFPSHead.n_los ] = iter_arr
+            self.iter_arr_mirror[ -1 ] = iter_arr[-1] # ensure periodicity
+
+            if self.n_newdomaincells % 2:
+                n_cells2mirror = int(self.n_newdomaincells / 2.)
+                cells2mirror = iter_arr[ -(n_cells2mirror+1) : -1]
+                self.iter_arr_mirror[ self.chFPSHead.n_los : self.chFPSHead.n_los + n_cells2mirror] = cells2mirror[::-1]
+                self.iter_arr_mirror[ self.chFPSHead.n_los + n_cells2mirror : -1] = cells2mirror
+            else: # explicitly place middle point of new cells
+                n_cells2mirror = int((self.n_newdomaincells / 2.) - 1.)
+                cells2mirror = iter_arr[ -(n_cells2mirror+1) : -1]
+                midcell = iter_arr[ -(n_cells2mirror+2) ]
+                self.iter_arr_mirror[ self.chFPSHead.n_los : self.chFPSHead.n_los + n_cells2mirror] = cells2mirror[::-1]
+                self.iter_arr_mirror[ self.chFPSHead.n_los + n_cells2mirror ] = midcell
+                self.iter_arr_mirror[ self.chFPSHead.n_los + n_cells2mirror + 1 : -1] = cells2mirror
+
+            print(f"New indexing array is: {self.iter_arr_mirror[int(self.chFPSHead.n_los - 2. * n_cells2mirror):]}")
+
+            #self.iter_arr_mirror[ self.chFPSHead.n_los : ] = iter_arr[ -2 : -(self.n_cells2mirror+2) : -1]
+
     def get_kvals_fft(self, dtype=np.float32):
         '''
         Return k-modes from the Fourier Transform
@@ -316,11 +349,16 @@ class ChollaFluxPowerSpectrumVelRebinHead:
             # calculate flux fluctuation 
             dFlux_skew = (fluxes[nSkewerID] - flux_mean) / flux_mean
 
+            if self.need2mirrorend:
+                # mirror end of skewer
+                dFlux_skew = dFlux_skew[self.iter_arr_mirror]
+                # extend velocity
+                u_bin = self.u_oldstep_newmax
+
             # evaluate flux fluctuations at new bins
             dFlux_skew_rebin = np.interp(x = self.linu_bin,
                                          xp = u_bin,
-                                         fp = dFlux_skew,
-                                         period = self.chFPSHead.u_max)
+                                         fp = dFlux_skew)
 
             # perform fft & calculate amplitude of fft
             fft = np.fft.rfft(dFlux_skew_rebin)
@@ -751,16 +789,18 @@ def main():
 
     precision = np.float64
 
+    print(args.linu_min, args.n_linu, args.lindu)
     # ensure new bin ranges + stepsize makes sense
-    assert args.linu_min < args.linu_max
+    assert args.linu_min >= 0
     assert args.lindu > 0.
-    assert args.lindu < (args.linu_max - args.linu_min) / 2. # ensure at least two bins
-    linu_newbin = np.arange(args.linu_min, args.linu_max, args.lindu)
+    linu_iterarr = np.arange(args.n_linu)
+    linu_newbin = args.linu_min + ( linu_iterarr * args.lindu )
+    #linu_newbin = np.arange(args.linu_min, args.linu_max, args.lindu)
     n_linubinedges = int(linu_newbin.size)
     n_linubins = int(n_linubinedges - 1.)
     if args.verbose:
-        velinfo_str = f"--- New velocity domain (in km s-1) spans from {args.linu_min:.3e}"
-        velinfo_str += f"to {args.linu_max:.3e} in steps of {args.lindu:.3e} for a total of {n_linubinedges:.0f} bin edges ---"
+        velinfo_str = f"--- New velocity domain (in km s-1) starts from {args.linu_min:.3e}"
+        velinfo_str += f"in {args.n_linu:.0f} steps of {args.lindu:.3e} for a total of {n_linubinedges:.0f} bin edges ---"
         print(velinfo_str)
         print(f'--- Velocity bin (in km s-1): {linu_newbin} ---')
 
