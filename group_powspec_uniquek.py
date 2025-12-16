@@ -93,6 +93,9 @@ def main():
         nQuantiles = fObj.attrs.get('nquantiles')
         nRanges = fObj.attrs.get('nranges')
 
+        # find out whether to expect rebinned FPS
+        urebin = 'k_urebin' in fObj.keys()
+
         # flush out old uniquek analysis
         uniquek_analysis_alive = 'k_uniq' in fObj.keys()
         if uniquek_analysis_alive:
@@ -144,6 +147,22 @@ def main():
 
             # write data
             _ = range_group.create_dataset('FPS_uniq', data=FPS_currRange)
+
+            if urebin:
+                # grab rebinned FPS arrays
+                FPS_urebin_x = range_group.get('FPS_urebin_x')[:]
+                FPS_urebin_y = range_group.get('FPS_urebin_y')[:]
+                FPS_urebin_z = range_group.get('FPS_urebin_z')[:]
+
+                # bc all kmodes are the same for these, just average all three together
+                FPS_urebin = (FPS_urebin_x + FPS_urebin_y + FPS_urebin_z) / 3.
+
+                # delete data set if it is alive
+                if 'FPS_urebin' in range_group.keys():
+                    del range_group['FPS_urebin']
+
+                # write data
+                _ = range_group.create_dataset('FPS_urebin', data=FPS_urebin)
 
     if args.verbose:
         print("--- Done ! ---")
