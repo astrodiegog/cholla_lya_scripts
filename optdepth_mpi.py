@@ -44,6 +44,9 @@ def create_parser():
     parser.add_argument('-p', '--peculiarless', help='Remove peculiar velocities',
                         action='store_true')
 
+    parser.add_argument('-b', '--bothpecs', help='Both with and without peculiar velocities',
+                        action='store_true')
+
     parser.add_argument('-r', '--restart', help='Reset progress bool array', 
                         action='store_true')
 
@@ -883,7 +886,6 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False, nopec=False):
     Returns:
         ...
     '''
-
     rank = comm.Get_rank()
     size = comm.Get_size()
     rank_idstr = f"Rank {rank:.0f}"
@@ -950,6 +952,122 @@ def init_taucalc(OTFSkewers, comm, restart = False, verbose=False, nopec=False):
     if verbose:
         print(f"--- {rank_idstr} : ...initialization complete ! --- ")
     
+    return
+
+
+def init_both_taucalc(OTFSkewers, comm, restart = False, verbose=False):
+    '''
+    Initialize the calculation of the effective optical depth. For each skewers_i axis
+        group, create three things:
+        1. (attribute) progress for optical depth
+        2. (dataset) boolean mask whether optical depth has been calculated for 
+            a specific skewer
+        3. (dataset) optical depth of mean flux for a skewer
+        for both with and without including peculiar velocities
+
+    Current implementation assumes the same nStride along each axis
+
+    Args:
+        OTFSkewers (ChollaOnTheFlySkewers): holds OTF skewers specific info
+        comm (mpi4py.MPI.Comm): communication context
+        restart (bool): (optional) whether to reset progress and set all 
+                        taucalc_bool to False
+        verbose (bool): (optional) whether to print important information
+    Returns:
+        ...
+    '''
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    rank_idstr = f"Rank {rank:.0f}"
+
+    taucalc_bool_nopec_key = 'taucalc_nopec_bool'
+    taucalc_eff_nopec_key = 'taucalc_nopec_eff'
+    taucalc_local_nopec_key = 'taucalc_nopec_local'
+    calctime_nopec_key = f'calctime_{size:.0f}_nopec_nprocs'
+    inittime_nopec_key = f'inittime_{size:.0f}_nopec_nprocs'
+
+    taucalc_bool_key = 'taucalc_bool'
+    taucalc_eff_key = 'taucalc_eff'
+    taucalc_local_key = 'taucalc_local'
+    calctime_key = f'calctime_{size:.0f}_nprocs'
+    inittime_key = f'inittime_{size:.0f}_nprocs'
+
+    with h5py.File(OTFSkewers.OTFSkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
+
+        if verbose:
+            print(f'--- {rank_idstr} : \t...initializing optical depth calculations for file {OTFSkewers.OTFSkewersfPath} ---')
+
+        if calctime_key not in fObj.keys():
+            calctime_arr = np.zeros(size, dtype=np.float64)
+            fObj.create_dataset(calctime_key, data=calctime_arr)
+        elif restart:
+            fObj[calctime_key][:] = 0.
+
+        if calctime_nopec_key not in fObj.keys():
+            calctime_arr = np.zeros(size, dtype=np.float64)
+            fObj.create_dataset(calctime_nopec_key, data=calctime_arr)
+        elif restart:
+            fObj[calctime_nopec_key][:] = 0.
+
+        if inittime_key not in fObj.keys():
+            calctime_arr = np.zeros(size, dtype=np.float64)
+            fObj.create_dataset(inittime_key, data=calctime_arr)
+        elif restart:
+            fObj[inittime_key][:] = 0.
+
+        if inittime_nopec_key not in fObj.keys():
+            calctime_arr = np.zeros(size, dtype=np.float64)
+            fObj.create_dataset(inittime_nopec_key, data=calctime_arr)
+        elif restart:
+            fObj[inittime_nopec_key][:] = 0.
+
+        OTFSkewers_lst = [OTFSkewers.get_skewersx_obj(),
+                        OTFSkewers.get_skewersy_obj(),
+                        OTFSkewers.get_skewersz_obj()]
+
+        # add progress attribute, boolean mask for whether tau is calculated, and tau itself
+        for i, OTFSkewers_i in enumerate(OTFSkewers_lst):
+
+            if verbose:
+                print(f"--- {rank_idstr} : \t\t...initializing arrays and attributes along axis {i:.0f} ---")
+            skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
+
+            taucalc_bool = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=bool)
+            taucalc_nopec_bool = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=bool)
+            taucalc_eff = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+            taucalc_nopec_eff = np.zeros(OTFSkewers_i.OTFSkewersiHead.n_skews, dtype=np.float64)
+
+            taucalc_local = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+                                        dtype=np.float64)
+            taucalc_nopec_local = np.zeros((OTFSkewers_i.OTFSkewersiHead.n_skews, OTFSkewers_i.OTFSkewersiHead.n_i),
+                                        dtype=np.float64)
+
+            if taucalc_bool_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_bool_key, data=taucalc_bool)
+            elif restart:
+                fObj[skew_key][taucalc_bool_key][:] = False
+            
+            if taucalc_bool_nopec_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_bool_nopec_key, data=taucalc_bool)
+            elif restart:
+                fObj[skew_key][taucalc_bool_nopec_key][:] = False
+
+            if taucalc_eff_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_eff_key, data=taucalc_eff)
+            
+            if taucalc_eff_nopec_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_eff_nopec_key, data=taucalc_eff)
+
+            if taucalc_local_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_local_key, data=taucalc_local)
+
+            if taucalc_local_nopec_key not in fObj[skew_key].keys():
+                fObj[skew_key].create_dataset(taucalc_local_nopec_key, data=taucalc_local)
+
+
+    if verbose:
+        print(f"--- {rank_idstr} : ...initialization complete ! --- ")
+
     return
 
 
@@ -1022,6 +1140,83 @@ def taucalc(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=Fal
 
 
 
+def taucalc_both(OTFSkewers_i, skewCosmoCalc, comm, precision=np.float64, verbose=False):
+    '''
+    Calculate the effective optical depth for each skewer along an axis for both with
+        and without peculiar velocities
+
+    Args:
+        OTFSkewers_i (ChollaOnTheFlySkewers_i): holds all skewer info along an axis
+        skewCosmoCalc (ChollaSkewerCosmoCalculator): holds optical depth function
+        comm (mpi4py.MPI.Comm): communication context
+        precision (np type): (optional) numpy precision to use
+        verbose (bool): (optional) whether to print important information
+    Returns:
+        ...
+    '''
+
+    skew_key = OTFSkewers_i.OTFSkewersiHead.skew_key
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    rank_idstr = f"Rank {rank:.0f}"
+
+    taucalc_bool_nopec_key = 'taucalc_nopec_bool'
+    taucalc_eff_nopec_key = 'taucalc_nopec_eff'
+    taucalc_local_nopec_key = 'taucalc_nopec_local'
+    calctime_nopec_key = f'calctime_{size:.0f}_nopec_nprocs'
+    inittime_nopec_key = f'inittime_{size:.0f}_nopec_nprocs'
+
+    taucalc_bool_key = 'taucalc_bool'
+    taucalc_eff_key = 'taucalc_eff'
+    taucalc_local_key = 'taucalc_local'
+    calctime_key = f'calctime_{size:.0f}_nprocs'
+    inittime_key = f'inittime_{size:.0f}_nprocs'
+
+    with h5py.File(OTFSkewers_i.fPath, 'r+', driver='mpio', comm=comm) as fObj:
+        taucalc_bool = fObj[skew_key][taucalc_bool_key]
+        curr_progress = np.sum(taucalc_bool) / taucalc_bool.size
+
+        taucalc_bool_nopec = fObj[skew_key][taucalc_bool_nopec_key]
+        curr_progress_nopec = np.sum(taucalc_bool_nopec) / taucalc_bool_nopec.size
+        if verbose:
+            print(f"--- {rank_idstr} : Starting calculations at {100 * curr_progress:.2f} % complete along ", OTFSkewers_i.OTFSkewersiHead.skew_key, "---")
+
+        skewerID_arr = np.arange(OTFSkewers_i.OTFSkewersiHead.n_skews)
+        skewerIDs_rank = np.argwhere((skewerID_arr % size) == rank).flatten()
+
+        # loop over each skewer
+        for nSkewerID in skewerIDs_rank:
+            # skip skewers whose optical depth already calculated
+            if (fObj[skew_key][taucalc_bool_key][nSkewerID]):
+                continue
+
+            # grab skewer data & calculate effective optical depth
+            densityHI = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('HI_density')[nSkewerID, :]
+            temp = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('temperature')[nSkewerID, :]
+            vel = fObj[OTFSkewers_i.OTFSkewersiHead.skew_key].get('los_velocity')[nSkewerID, :]
+
+            taus_nopec = skewCosmoCalc.optical_depth_Hydrogen_nopec(densityHI, temp)
+            taus = skewCosmoCalc.optical_depth_Hydrogen(densityHI, vel, temp)
+
+            fluxes_nopec = np.exp(- taus)
+            fluxes = np.exp(- taus)
+            meanF_nopec = np.mean(fluxes_nopec)
+            meanF = np.mean(fluxes)
+
+            # update bool arr, and tau arrs
+            fObj[skew_key][taucalc_bool_key][nSkewerID] = True
+            fObj[skew_key][taucalc_bool_nopec_key][nSkewerID] = True
+            fObj[skew_key][taucalc_eff_key][nSkewerID] = -1. * np.log(meanF)
+            fObj[skew_key][taucalc_eff_nopec_key][nSkewerID] = -1. * np.log(meanF_nopec)
+            fObj[skew_key][taucalc_local_key][nSkewerID] = taus
+            fObj[skew_key][taucalc_local_nopec_key][nSkewerID] = taus_nopec
+
+
+
+    if verbose:
+        print(f"--- {rank_idstr} : Effective optical depth calculation completed along ", OTFSkewers_i.OTFSkewersiHead.skew_key)
+
+
 def main():
     '''
     Append the array of optical depth of mean flux for a skewer file
@@ -1030,6 +1225,8 @@ def main():
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
+
+    t_script_start = MPI.Wtime()
 
     rank_idstr = f"Rank {rank:.0f}"
 
@@ -1052,8 +1249,12 @@ def main():
         print(f"--- {rank_idstr} : Args have been broadcasted! ---")
         if args.peculiarless:
             print(f'--- {rank_idstr} : Not including peculiar velocities ! ---')
+        elif args.bothpecs:
+            print(f'--- {rank_idstr} : Save including and not including peculiar velocities ! ---')
         else:
             print(f'--- {rank_idstr} : Including peculiar velocities ! ---')
+
+    assert not (args.peculiarless and args.bothpecs)
 
     precision = np.float64
 
@@ -1069,7 +1270,10 @@ def main():
 
     # add progress attribute, boolean mask for whether tau is calculated, and tau itself
     t_init_start = MPI.Wtime()
-    init_taucalc(OTFSkewers, comm, restart=args.restart, verbose=args.verbose, nopec=args.peculiarless)
+    if args.bothpecs:
+        init_both_taucalc(OTFSkewers, comm, restart=args.restart, verbose=args.verbose)
+    else:
+        init_taucalc(OTFSkewers, comm, restart=args.restart, verbose=args.verbose, nopec=args.peculiarless)
     t_init_end = MPI.Wtime()
     if args.verbose:
         print(f"--- {rank_idstr} : Took {t_init_end - t_init_start:.4e} secs to initialize info ---")
@@ -1099,19 +1303,27 @@ def main():
         print(f"--- {rank_idstr} : Skewer Cosmo Calculator objects created ---")
 
     t_start = MPI.Wtime()
-
-    taucalc(OTFSkewers_x, skewCosmoCalc_x, comm, precision, args.verbose, args.peculiarless)
+    if args.bothpecs:
+        taucalc_both(OTFSkewers_x, skewCosmoCalc_x, comm, precision, args.verbose)
+    else:
+        taucalc(OTFSkewers_x, skewCosmoCalc_x, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_x = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_x - t_start:.4e} secs to calculate tau along x ---")
 
 
-    taucalc(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose, args.peculiarless)
+    if args.bothpecs:
+        taucalc_both(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose)
+    else:
+        taucalc(OTFSkewers_y, skewCosmoCalc_y, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_y = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_y - t_x:.4e} secs to calculate tau along y ---")
 
-    taucalc(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose, args.peculiarless)
+    if args.bothpecs:
+        taucalc_both(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose)
+    else:
+        taucalc(OTFSkewers_z, skewCosmoCalc_z, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_z = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_z - t_y:.4e} secs to calculate tau along z ---")
@@ -1123,14 +1335,18 @@ def main():
         if args.verbose:
             print(f"--- {rank_idstr} : Took {t_end - t_start:.4e} secs for entire calculation ---")
 
-        if args.peculiarless:
+        if args.peculiarless or args.bothpecs:
             fObj[f'calctime_{size:.0f}_nopec_nprocs'][rank] = t_end - t_start
             fObj[f'inittime_{size:.0f}_nopec_nprocs'][rank] = t_init_end - t_init_start
         else:
             fObj[f'calctime_{size:.0f}_nprocs'][rank] = t_end - t_start
             fObj[f'inittime_{size:.0f}_nprocs'][rank] = t_init_end - t_init_start
 
-        
+    if args.verbose:
+        t_script_end = MPI.Wtime()
+        print(f"--- {rank_idstr} : Took {t_script_end - t_script_start:.4e} secs for entire program ---")
+
+
 
 if __name__=="__main__":
     main()
