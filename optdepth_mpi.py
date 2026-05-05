@@ -169,25 +169,25 @@ class ChollaSnapCosmologyHead:
 
         return self.cosmoHead.H0 * np.sqrt(H0_factor)
 
-    def dvHubble(self, dx):
+    def dvHubble(self, dx_h):
         '''
         Return the Hubble flow through a cell
 
         Args:
-            dx (float): comoving distance between cells (kpc)
+            dx_h (float): comoving distance between cells (h-1 kpc)
         Returns:
             (float): Hubble flow over a cell (km/s)
         '''
-        # convert [kpc] to [h-1 kpc]
-        dx_h = dx / self.cosmoHead.h_cosmo
+        # convert [h-1 kpc] to [kpc]
+        dx = dx_h / self.cosmoHead.h_cosmo
 
-        dxh_cgs = dx_h * self.cosmoHead.kpc_cgs # h^-1 kpc * (#cm / kpc) =  h^-1 cm
-        dxh_Mpc = dxh_cgs / self.cosmoHead.Mpc_cgs # h^-1 cm / (#cm / Mpc) = h^-1 Mpc
+        dx_cgs = dx * self.cosmoHead.kpc_cgs # kpc * (#cm / kpc) = cm
+        dx_Mpc = dx_cgs / self.cosmoHead.Mpc_cgs # cm / (#cm / Mpc) = Mpc
 
         # convert to physical length
-        dxh_Mpc_phys = dxh_Mpc * self.a
+        dx_Mpc_phys = dx_Mpc * self.a
 
-        return self.Hubble() * dxh_Mpc_phys
+        return self.Hubble() * dx_Mpc_phys
 
 
 class ChollaCosmoCalculator:
@@ -387,17 +387,17 @@ class ChollaSkewerCosmoCalculator:
             scale_factor (float): scale factor
             cosmoHead (ChollaCosmologyHead): provides helpful information of cosmology & units
             n_los (int): number of cells along line-of-sight
-            dx (float): comoving distance between cells (kpc)
+            dx_h (float): comoving distance between cells (h-1 kpc)
             dtype (np type): (optional) numpy precision to initialize output arrays
         
         Objects including ghost cells are suffixed with _ghost
 
     Values are returned in code units unless otherwise specified.
     '''
-    def __init__(self, scale_factor, cosmoHead, n_los, dx, dtype=np.float32):
+    def __init__(self, scale_factor, cosmoHead, n_los, dx_h, dtype=np.float32):
         self.n_los = n_los
         self.n_ghost = int(0.1 * n_los) # take 10% from bruno
-        self.dx = dx
+        self.dx_h = dx_h
         self.a = scale_factor
 
         # number of line-of-sight cells including ghost cells
@@ -414,7 +414,7 @@ class ChollaSkewerCosmoCalculator:
         self.hydroCalc_ghost = ChollaHydroCalculator(calc_dims_ghost, dtype=dtype)
 
         # calculate Hubble flow through one cell
-        dvHubble = self.snapCosmoHead.dvHubble(self.dx) # [km s-1]
+        dvHubble = self.snapCosmoHead.dvHubble(self.dx_h) # [km s-1]
         self.dvHubble_cgs = dvHubble * self.snapCosmoHead.cosmoHead.km_cgs # [cm s-1]
 
         # create Hubble flow arrays along left, right, and center of each cell
@@ -638,9 +638,9 @@ class ChollaOnTheFlySkewers:
 
         # set grid information (ncells, dist between cells, nstride)
         self.set_gridinfo()
-        dx_Mpc = self.dx / 1.e3 # [Mpc]
-        dy_Mpc = self.dy / 1.e3
-        dz_Mpc = self.dz / 1.e3
+        dx_h_Mpc = self.dx_h_kpc / 1.e3 # [h-1 Mpc]
+        dy_h_Mpc = self.dy_h_kpc / 1.e3
+        dz_h_Mpc = self.dz_h_kpc / 1.e3
 
         # set cosmology params
         self.set_cosmoinfo()
@@ -650,9 +650,9 @@ class ChollaOnTheFlySkewers:
         cosmoh = self.H0 / 100.
 
         # calculate proper distance along each direction
-        dxproper = dx_Mpc * self.current_a / cosmoh # [h-1 Mpc]
-        dyproper = dy_Mpc * self.current_a / cosmoh
-        dzproper = dz_Mpc * self.current_a / cosmoh
+        dxproper = dx_h_Mpc * self.current_a / cosmoh # [Mpc]
+        dyproper = dy_h_Mpc * self.current_a / cosmoh
+        dzproper = dz_h_Mpc * self.current_a / cosmoh
 
         # calculate Hubble flow through a cell along each axis
         self.dvHubble_x = H * dxproper # [km s-1]
@@ -671,7 +671,7 @@ class ChollaOnTheFlySkewers:
             ...
         '''
         with h5py.File(self.OTFSkewersfPath, 'r', driver='mpio', comm=self.comm) as fObj:
-            # grab length of box in units of [kpc]
+            # grab length of box in units of [h-1 kpc]
             Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
 
             # set number of skewers and stride number along each direction 
@@ -686,9 +686,9 @@ class ChollaOnTheFlySkewers:
         self.nstride_z = int(np.sqrt( (self.nx * self.ny)/(nskewersz) ))
 
         # save cell distance in each direction to later calculate hubble flow
-        self.dx = Lx / self.nx
-        self.dy = Ly / self.ny
-        self.dz = Lz / self.nz
+        self.dx_h_kpc = Lx / self.nx
+        self.dy_h_kpc = Ly / self.ny
+        self.dz_h_kpc = Lz / self.nz
 
         return
 
@@ -1025,9 +1025,9 @@ def main():
     if args.verbose:
         print(f"--- {rank_idstr} : OTFSkewers in each axis are created ---")
 
-    skewCosmoCalc_x = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.nx, OTFSkewers.dx, precision)
-    skewCosmoCalc_y = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.ny, OTFSkewers.dy, precision)
-    skewCosmoCalc_z = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.nz, OTFSkewers.dz, precision)
+    skewCosmoCalc_x = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.nx, OTFSkewers.dx_h_kpc, precision)
+    skewCosmoCalc_y = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.ny, OTFSkewers.dy_h_kpc, precision)
+    skewCosmoCalc_z = ChollaSkewerCosmoCalculator(OTFSkewers.current_a, chCosmoHead, OTFSkewers.nz, OTFSkewers.dz_h_kpc, precision)
 
     if args.verbose:
         print(f"--- {rank_idstr} : Skewer Cosmo Calculator objects created ---")

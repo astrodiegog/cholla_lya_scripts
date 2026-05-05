@@ -161,25 +161,25 @@ class ChollaSnapCosmologyHead:
         return self.cosmoHead.H0 * np.sqrt(H0_factor)
 
 
-    def dvHubble(self, dx):
+    def dvHubble(self, dx_h):
         '''
         Return the Hubble flow through a cell
 
         Args:
-            dx (float): comoving distance between cells (kpc)
+            dx_h (float): comoving distance between cells (h-1 kpc)
         Returns:
             (float): Hubble flow over a cell (km/s)
         '''
-        # convert [kpc] to [h-1 kpc]
-        dx_h = dx / self.cosmoHead.h_cosmo
+        # convert [h-1 kpc] to [kpc]
+        dx = dx_h / self.cosmoHead.h_cosmo
 
-        dxh_cgs = dx_h * self.cosmoHead.kpc_cgs # h^-1 kpc * (#cm / kpc) =  h^-1 cm
-        dxh_Mpc = dxh_cgs / self.cosmoHead.Mpc_cgs # h^-1 cm / (#cm / Mpc) = h^-1 Mpc
+        dx_cgs = dx * self.cosmoHead.kpc_cgs # kpc * (#cm / kpc) = cm
+        dx_Mpc = dx_cgs / self.cosmoHead.Mpc_cgs # cm / (#cm / Mpc) = Mpc
 
         # convert to physical length
-        dxh_Mpc_phys = dxh_Mpc * self.a
+        dx_Mpc_phys = dx_Mpc * self.a
 
-        return self.Hubble() * dxh_Mpc_phys
+        return self.Hubble() * dx_Mpc_phys
 
 
 

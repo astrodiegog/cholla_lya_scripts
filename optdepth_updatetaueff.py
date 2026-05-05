@@ -157,9 +157,9 @@ class ChollaOnTheFlySkewers:
 
         # set grid information (ncells, dist between cells, nstride)
         self.set_gridinfo()
-        dx_Mpc = self.dx / 1.e3 # [Mpc]
-        dy_Mpc = self.dy / 1.e3
-        dz_Mpc = self.dz / 1.e3
+        dx_h_Mpc = self.dx_h_kpc / 1.e3 # [h-1 Mpc]
+        dy_h_Mpc = self.dy_h_kpc / 1.e3
+        dz_h_Mpc = self.dz_h_kpc / 1.e3
 
         # set cosmology params
         self.set_cosmoinfo()
@@ -169,9 +169,9 @@ class ChollaOnTheFlySkewers:
         cosmoh = self.H0 / 100.
 
         # calculate proper distance along each direction
-        dxproper = dx_Mpc * self.current_a / cosmoh # [h-1 Mpc]
-        dyproper = dy_Mpc * self.current_a / cosmoh
-        dzproper = dz_Mpc * self.current_a / cosmoh
+        dxproper = dx_h_Mpc * self.current_a / cosmoh # [Mpc]
+        dyproper = dy_h_Mpc * self.current_a / cosmoh
+        dzproper = dz_h_Mpc * self.current_a / cosmoh
 
         # calculate Hubble flow through a cell along each axis
         self.dvHubble_x = H * dxproper # [km s-1]
@@ -190,7 +190,7 @@ class ChollaOnTheFlySkewers:
             ...
         '''
         with h5py.File(self.OTFSkewersfPath, 'r', driver='mpio', comm=self.comm) as fObj:
-            # grab length of box in units of [kpc]
+            # grab length of box in units of [h-1 kpc]
             Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
 
             # set number of skewers and stride number along each direction 
@@ -205,9 +205,9 @@ class ChollaOnTheFlySkewers:
         self.nstride_z = int(np.sqrt( (self.nx * self.ny)/(nskewersz) ))
 
         # save cell distance in each direction to later calculate hubble flow
-        self.dx = Lx / self.nx
-        self.dy = Ly / self.ny
-        self.dz = Lz / self.nz
+        self.dx_h_kpc = Lx / self.nx
+        self.dy_h_kpc = Ly / self.ny
+        self.dz_h_kpc = Lz / self.nz
 
         return
 

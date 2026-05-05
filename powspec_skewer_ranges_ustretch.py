@@ -207,25 +207,25 @@ class ChollaSnapCosmologyHead:
         return self.cosmoHead.H0 * np.sqrt(H0_factor)
 
 
-    def dvHubble(self, dx):
+    def dvHubble(self, dx_h):
         '''
         Return the Hubble flow through a cell
 
         Args:
-            dx (float): comoving distance between cells (kpc)
+            dx_h (float): comoving distance between cells (h-1 kpc)
         Returns:
             (float): Hubble flow over a cell (km/s)
         '''
-        # convert [kpc] to [h-1 kpc]
-        dx_h = dx / self.cosmoHead.h_cosmo
+        # convert [h-1 kpc] to [kpc]
+        dx = dx_h / self.cosmoHead.h_cosmo
 
-        dxh_cgs = dx_h * self.cosmoHead.kpc_cgs # h^-1 kpc * (#cm / kpc) =  h^-1 cm
-        dxh_Mpc = dxh_cgs / self.cosmoHead.Mpc_cgs # h^-1 cm / (#cm / Mpc) = h^-1 Mpc
+        dx_cgs = dx * self.cosmoHead.kpc_cgs # kpc * (#cm / kpc) = cm
+        dx_Mpc = dx_cgs / self.cosmoHead.Mpc_cgs # cm / (#cm / Mpc) = Mpc
 
         # convert to physical length
-        dxh_Mpc_phys = dxh_Mpc * self.a
+        dx_Mpc_phys = dx_Mpc * self.a
 
-        return self.Hubble() * dxh_Mpc_phys
+        return self.Hubble() * dx_Mpc_phys
 
 
 ###
@@ -580,9 +580,9 @@ class ChollaOnTheFlySkewers:
 
         # set grid information (ncells, dist between cells, nstride)
         self.set_gridinfo()
-        dx_Mpc = self.dx / 1.e3 # [Mpc]
-        dy_Mpc = self.dy / 1.e3
-        dz_Mpc = self.dz / 1.e3
+        dx_h_Mpc = self.dx_h_kpc / 1.e3 # [h-1 Mpc]
+        dy_h_Mpc = self.dy_h_kpc / 1.e3
+        dz_h_Mpc = self.dz_h_kpc / 1.e3
 
         # set cosmology params
         self.set_cosmoinfo()
@@ -592,9 +592,9 @@ class ChollaOnTheFlySkewers:
         cosmoh = self.H0 / 100.
 
         # calculate proper distance along each direction
-        dxproper = dx_Mpc * self.current_a / cosmoh # [h-1 Mpc]
-        dyproper = dy_Mpc * self.current_a / cosmoh
-        dzproper = dz_Mpc * self.current_a / cosmoh
+        dxproper = dx_h_Mpc * self.current_a / cosmoh # [Mpc]
+        dyproper = dy_h_Mpc * self.current_a / cosmoh
+        dzproper = dz_h_Mpc * self.current_a / cosmoh
 
         # calculate hubble flow through a cell along each axis
         self.dvHubble_x = H * dxproper # [km s-1]
@@ -615,7 +615,7 @@ class ChollaOnTheFlySkewers:
 
 
         with h5py.File(self.OTFSkewersfPath, 'r') as fObj:
-            # grab length of box in units of [kpc]
+            # grab length of box in units of [h-1 kpc]
             Lx, Ly, Lz = np.array(fObj.attrs['Lbox'])
 
             # set number of skewers and stride number along each direction 
@@ -631,9 +631,9 @@ class ChollaOnTheFlySkewers:
         self.nstride_z = int(np.sqrt( (self.nx * self.ny)/(nskewersz) ))
 
         # save cell distance in each direction to later calculate Hubble flow
-        self.dx = Lx / self.nx
-        self.dy = Ly / self.ny
-        self.dz = Lz / self.nz
+        self.dx_h_kpc = Lx / self.nx
+        self.dy_h_kpc = Ly / self.ny
+        self.dz_h_kpc = Lz / self.nz
         
         return
 
@@ -835,11 +835,11 @@ def main():
     Omega_M, Omega_R = OTFSkewers.Omega_M, OTFSkewers.Omega_R
     Omega_b, H0 = OTFSkewers.Omega_b, OTFSkewers.H0
     w0, wa = OTFSkewers.w0, OTFSkewers.wa
-    # create length of box array (kpc)
+    # create length of box array (h-1 kpc)
     Lbox = np.zeros(3, dtype=precision)
-    Lbox[0] = OTFSkewers.dx * OTFSkewers.nx
-    Lbox[1] = OTFSkewers.dy * OTFSkewers.ny
-    Lbox[2] = OTFSkewers.dz * OTFSkewers.nz
+    Lbox[0] = OTFSkewers.dx_h_kpc * OTFSkewers.nx
+    Lbox[1] = OTFSkewers.dy_h_kpc * OTFSkewers.ny
+    Lbox[2] = OTFSkewers.dz_h_kpc * OTFSkewers.nz
     # create number of cells array
     nCells = np.zeros(3, dtype=np.uint64)
     nCells[0] = int(OTFSkewers.nx)
@@ -1044,9 +1044,9 @@ def main():
     # calculate Hubble flow across a cell
     chCosmoHead = ChollaCosmologyHead(Omega_M, Omega_R, Omega_K, Omega_L, w0, wa, H0)
     chSnapCosmoHead = ChollaSnapCosmologyHead(scale_factor, chCosmoHead)
-    dvHubble_x = chSnapCosmoHead.dvHubble(OTFSkewers.dx)
-    dvHubble_y = chSnapCosmoHead.dvHubble(OTFSkewers.dy)
-    dvHubble_z = chSnapCosmoHead.dvHubble(OTFSkewers.dz)
+    dvHubble_x = chSnapCosmoHead.dvHubble(OTFSkewers.dx_h_kpc)
+    dvHubble_y = chSnapCosmoHead.dvHubble(OTFSkewers.dy_h_kpc)
+    dvHubble_z = chSnapCosmoHead.dvHubble(OTFSkewers.dz_h_kpc)
 
     # create Flux Power Spectrum object
     FPSHead_x = ChollaFluxPowerSpectrumHead(nCells[0], dvHubble_x)
