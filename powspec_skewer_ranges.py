@@ -211,7 +211,7 @@ class ChollaSnapCosmologyHead:
         # convert [h-1 kpc] to [kpc]
         dx = dx_h / self.cosmoHead.h_cosmo
 
-        dx_cgs = dx_h * self.cosmoHead.kpc_cgs # kpc * (#cm / kpc) = cm
+        dx_cgs = dx * self.cosmoHead.kpc_cgs # kpc * (#cm / kpc) = cm
         dx_Mpc = dx_cgs / self.cosmoHead.Mpc_cgs # cm / (#cm / Mpc) = Mpc
 
         # convert to physical length
