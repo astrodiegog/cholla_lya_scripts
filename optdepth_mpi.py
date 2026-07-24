@@ -610,6 +610,72 @@ class ChollaOnTheFlySkewers_i:
         assert self.fPath.is_file() # make sure file exists
         self.comm = comm
 
+        self.set_keys() # set possible skewer keys
+
+    def set_keys(self):
+        '''
+        Check skewer group to set the available keys. Keys in `skewer_i` groups
+            may lead to a 1D or 2D dataset
+
+        Args:
+            ...
+        Returns:
+            ...
+        '''
+
+        keys_1D, keys_2D = [], []
+        with h5py.File(self.fPath, 'r') as fObj:
+            self.allkeys = set(fObj[self.OTFSkewersiHead.skew_key].keys())
+            for key in self.allkeys:
+                if fObj[self.OTFSkewersiHead.skew_key].get(key).ndim == 1:
+                    keys_1D.append(key)
+                if fObj[self.OTFSkewersiHead.skew_key].get(key).ndim == 2:
+                    keys_2D.append(key)
+
+        self.keys_1D = set(keys_1D)
+        self.keys_2D = set(keys_2D)
+
+        return
+
+    def check_datakey(self, data_key):
+        '''
+        Check if a requested data key is valid to be accessed in skewers file
+
+        Args:
+            data_key (str): key string that will be used to access hdf5 dataset
+        Return:
+            (bool): whether data_key is a part of expected data keys
+        '''
+
+        return data_key in self.allkeys
+
+    def get_skeweralldata(self, key, dtype=np.float32):
+        '''
+        Return a specific dataset for all skewers.
+            Use this method with caution, as the resulting array can be large
+
+            For (2048)^3 + nstride=4 + float64, resulting array will be ~4 GBs
+
+        Args:
+            key (str): key to access data from hdf5 file
+            dtype (np type): (optional) numpy precision to use
+        Returns:
+            arr (arr): requested dataset
+        '''
+
+        assert self.check_datakey(key)
+
+        if key in self.keys_1D:
+            arr = np.zeros((self.OTFSkewersiHead.n_skews), dtype=dtype)
+            with h5py.File(self.fPath, 'r') as fObj:
+                arr[:] = fObj[self.OTFSkewersiHead.skew_key].get(key)[:]
+        elif key in self.keys_2D:
+            arr = np.zeros((self.OTFSkewersiHead.n_skews, self.OTFSkewersiHead.n_i), dtype=dtype)
+            with h5py.File(self.fPath, 'r') as fObj:
+                arr[:,:] = fObj[self.OTFSkewersiHead.skew_key].get(key)[:, :]
+
+        return arr
+
 
 
 class ChollaOnTheFlySkewers:
