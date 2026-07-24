@@ -559,12 +559,12 @@ class ChollaSkewerCosmoCalculator:
 
 
 # Skewer-specific information that interacts with skewers for a given skewer file
-# ChollaOnTheFlySkewers_iHead   --> Holds skewer group
-# ChollaOnTheFlySkewers_i       --> Creates ChollaOnTheFlySkewer object
-# ChollaOnTheFlySkewers         --> Creates ChollaOnTheFlySkewers_i object
+# ChollaSkewers_iHead   --> Holds skewer group
+# ChollaSkewers_i       --> Creates ChollaSkewer object
+# ChollaSkewers         --> Creates ChollaSkewers_i object
 
 
-class ChollaOnTheFlySkewers_iHead:
+class ChollaSkewers_iHead:
     '''
     Cholla On The Fly Skewers_i Head
 
@@ -596,7 +596,7 @@ class ChollaSkewers_i:
             access data for that output
 
         Initialized with:
-        - ChollaSkewersiHead (ChollaOnTheFlySkewers_iHead): header
+        - ChollaSkewersiHead (ChollaSkewers_iHead): header
             information associated with skewer
         - fPath (PosixPath): file path to skewers output
         - comm (mpi4py.MPI.Comm): communication context 
@@ -807,7 +807,7 @@ class ChollaSkewers:
 
     def get_skewersx_obj(self):
         '''
-        Return ChollaOnTheFlySkewers_i object of the x-skewers
+        Return ChollaSkewers_i object of the x-skewers
 
         Args:
             ...
@@ -815,44 +815,44 @@ class ChollaSkewers:
             Skewerx (ChollaSkewers_i): skewer object
         '''
 
-        SkewersxHead = ChollaOnTheFlySkewers_iHead(self.nx, self.ny, self.nz,
+        SkewersxHead = ChollaSkewers_iHead(self.nx, self.ny, self.nz,
                                                       self.nstride_x, self.xskew_str)
 
-        Skewerx = ChollaOnTheFlySkewers_i(SkewersxHead, self.SkewersfPath, self.comm)
+        Skewerx = ChollaSkewers_i(SkewersxHead, self.SkewersfPath, self.comm)
 
         return Skewerx
 
     def get_skewersy_obj(self):
         '''
-        Return ChollaOnTheFlySkewers_i object of the y-skewers
+        Return ChollaSkewers_i object of the y-skewers
 
         Args:
             ...
         Return:
-            Skewery (ChollaOnTheFlySkewers_i): skewer object
+            Skewery (ChollaSkewers_i): skewer object
         '''
 
-        SkewersyHead = ChollaOnTheFlySkewers_iHead(self.ny, self.nx, self.nz,
+        SkewersyHead = ChollaSkewers_iHead(self.ny, self.nx, self.nz,
                                                       self.nstride_y, self.yskew_str)
 
-        Skewery = ChollaOnTheFlySkewers_i(SkewersyHead, self.SkewersfPath, self.comm)
+        Skewery = ChollaSkewers_i(SkewersyHead, self.SkewersfPath, self.comm)
 
         return Skewery
 
     def get_skewersz_obj(self):
         '''
-        Return ChollaOnTheFlySkewers_i object of the z-skewers
+        Return ChollaFlySkewers_i object of the z-skewers
 
         Args:
             ...
         Return:
-            Skewerz (ChollaOnTheFlySkewers_i): skewer object
+            Skewerz (ChollaSkewers_i): skewer object
         '''
 
-        SkewerszHead = ChollaOnTheFlySkewers_iHead(self.nz, self.nx, self.ny,
+        SkewerszHead = ChollaSkewers_iHead(self.nz, self.nx, self.ny,
                                                       self.nstride_z, self.zskew_str)
 
-        Skewerz = ChollaOnTheFlySkewers_i(SkewerszHead, self.SkewersfPath, self.comm)
+        Skewerz = ChollaSkewers_i(SkewerszHead, self.SkewersfPath, self.comm)
 
         return Skewerz
 
@@ -1106,12 +1106,12 @@ def main():
         print(f"--- {rank_idstr} : Took {t_x - t_start:.4e} secs to calculate tau along x ---")
 
 
-    taucalc(Skewers_y, skewCosmoCalc_y, comm, precision, args.verbose, args.peculiarless)
+    #taucalc(Skewers_y, skewCosmoCalc_y, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_y = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_y - t_x:.4e} secs to calculate tau along y ---")
 
-    taucalc(Skewers_z, skewCosmoCalc_z, comm, precision, args.verbose, args.peculiarless)
+    #taucalc(Skewers_z, skewCosmoCalc_z, comm, precision, args.verbose, args.peculiarless)
     if args.verbose:
         t_z = MPI.Wtime()
         print(f"--- {rank_idstr} : Took {t_z - t_y:.4e} secs to calculate tau along z ---")
@@ -1119,6 +1119,7 @@ def main():
     t_end = MPI.Wtime()
 
 
+    _='''
     with h5py.File(Skewers.SkewersfPath, 'r+', driver='mpio', comm=comm) as fObj:
         if args.verbose:
             print(f"--- {rank_idstr} : Took {t_end - t_start:.4e} secs for entire calculation ---")
@@ -1129,7 +1130,7 @@ def main():
         else:
             fObj[f'calctime_{size:.0f}_nprocs'][rank] = t_end - t_start
             fObj[f'inittime_{size:.0f}_nprocs'][rank] = t_init_end - t_init_start
-
+    '''
         
 
 if __name__=="__main__":
