@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from mpi4py import MPI
+# from mpi4py import MPI
 
 import numpy as np
 import h5py
@@ -40,6 +40,15 @@ def create_parser():
     parser.add_argument('-o', '--outdir', help='Output directory', type=str)
 
     parser.add_argument('-v', '--verbose', help='Print info along the way', 
+                        action='store_true')
+
+    parser.add_argument('-x', '--xskewers', help='Skewers along x direction? (default: False)', 
+                        action='store_true')
+
+    parser.add_argument('-y', '--yskewers', help='Skewers along y direction? (default: False)', 
+                        action='store_true')
+
+    parser.add_argument('-z', '--zskewers', help='Skewers along z direction? (default: False)', 
                         action='store_true')
 
     return parser
@@ -392,6 +401,245 @@ class ChollaCosmologyLmtHead:
 
 
 
+###
+# Data structures relating how OTF skewers are indexed (with some global id --
+# the index of a skewer along some axis) and how the data is saved in native
+# hydro cholla data files. With the parallelization of cholla, it's easy to
+# think of a global skewer lying on a "face" that some process has access
+# to and having a "local" id within this face
+###
+
+class ChollaSkewerLocalFaceHead:
+    '''
+    Cholla Skewer Local Face Head
+
+    Holds information regarding a local skewer within face
+
+        Initialized with:
+        - localface_id (int): id of the local skewer on face
+        - localface_joffset (int): offset along j-axis
+        - localface_koffset (int): offset along k-axis
+    '''
+    def __init__(self, localface_id, localface_joffset, localface_koffset):
+        self.localface_id = localface_id
+        self.localface_joffset = localface_joffset
+        self.localface_koffset = localface_koffset
+
+
+class ChollaSkewerFaceHead:
+    '''
+    Cholla Skewer Face Head
+
+    Holds information regarding a local skewer face
+
+        Initialized with:
+        - face_id (int): id of the face
+        - face_joffset (int): offset along j-axis
+        - face_koffset (int): offset along k-axis
+    '''
+    def __init__(self, face_id, face_joffset, face_koffset):
+        self.face_id = face_id
+        self.face_joffset = face_joffset
+        self.face_koffset = face_koffset
+
+
+
+class ChollaSkewerGlobalHead:
+    '''
+    Cholla Skewer Global Head
+
+    Holds information regarding a global skewer
+
+        Initialized with:
+        - global_id (int): id of the global skewer
+        - chFaceHead (ChollaSkewerFaceHead): ChollaSkewerFaceHead object,
+            holds info on face within grid
+        - chFaceLocalHead (ChollaSkewerLocalFaceHead): ChollaSkewerLocalFaceHead
+            object, holds info on skewer within face
+        - n_los (int): number of cells along line-of-sight
+        - nlos_proc (int): number of processes along line-of-sight
+    '''
+    def __init__(self, global_id, ChollaSkewerFaceHead, ChollaSkewerLocalFaceHead, n_los, nlos_proc):
+        self.global_id = global_id
+        self.skewFaceHead = ChollaSkewerFaceHead
+        self.skewLocalFaceHead = ChollaSkewerLocalFaceHead
+        self.n_los = int(n_los)
+        self.nlos_proc = int(nlos_proc)
+
+    def get_globalj(self):
+        '''
+        Grab global j offset
+
+        Args:
+            ...
+        Returns:
+            (int): global j offset
+        '''
+
+        return int(self.skewFaceHead.face_joffset + self.skewLocalFaceHead.localface_joffset)
+
+    def get_globalk(self):
+        '''
+        Grab global k offset
+
+        Args:
+            ...
+        Returns:
+            (int): global k offset
+        '''
+
+        return int(self.skewFaceHead.face_koffset + self.skewLocalFaceHead.localface_koffset)
+
+
+###
+# Data structures implementing a ChollaSkewerGlobalHead given some information
+# related to the global grid of the simulation and how tight skewers are saved
+# in On-The-Fly Skewers. Convention of xyz comes and memory management comes
+# from Cholla's source code
+###
+
+class ChollaSkewerAnalysisHead:
+    '''
+    Cholla Skewer Analysis Head
+
+    Holds information regarding a skewer analysis
+
+        Initialized with:
+        - nlos_global (int): number of line-of-sight global cells
+        - nj_global (int): number of global cells along j-dimension
+        - nk_global (int): number of global cells along k-dimension
+        - nlos_proc (int): number of processes along line-of-sight
+        - nj_proc (int): number of processes along j-dimension
+        - nk_proc (int): number of processes along k-dimension
+    '''
+    def __init__(self, nlos_global, nj_global, nk_global, nlos_proc, nj_proc, nk_proc):
+        self.nlos_global = nlos_global
+        self.nlos_proc = nlos_proc
+        self.nj_global = nj_global
+        self.nk_global = nk_global
+
+        self.ni_local = int(nlos_global / nlos_proc) # number of cells in process along los
+        self.nj_local = int(nj_global / nj_proc) # number of cells in process along j-dimension
+        self.nk_local = int(nk_global / nk_proc) # ^ along k-dimension
+
+        self.nFaces_j, self.nFaces_k = int(nj_proc), int(nk_proc) # call number of processes a "face"
+        self.nFaces_tot = int(self.nFaces_j * self.nFaces_k)
+
+        self.nSkewersLocal = int(self.nj_local * self.nk_local)
+        self.nSkewersTotal = self.nSkewersLocal * self.nFaces_tot
+
+        assert self.nSkewersTotal == self.nj_global * self.nk_global
+
+
+    def get_facehead_from_faceid(self, face_id):
+        '''
+        Return the ChollaSkewerFaceHead object corresponding to its face id
+            Faces are tiled first along k-axis, then j-axis
+
+        Args:
+            face_id (int): id of the face
+        Return:
+            skewfacehead (ChollaSkewerFaceHead): FaceHead for this global skewer
+        '''
+
+        assert (0 <= face_id) and (face_id < self.nFaces_tot)
+
+        face_joffset = int( (face_id % self.nFaces_j) * self.nj_local)
+        face_koffset = int( (face_id // self.nFaces_j) * self.nk_local)
+
+        skewfacehead = ChollaSkewerFaceHead(face_id, face_joffset, face_koffset)
+
+        return skewfacehead
+
+    def get_facehead_from_globalid(self, global_id):
+        '''
+        Return the ChollaSkewerFaceHead object corresponding to skewer global id
+            Faces are tiled first along k-axis, then j-axis
+
+        Args:
+            global_id (int): id of the global skewer
+        Return:
+            skewfacehead (ChollaSkewerFaceHead): FaceHead for this global skewer
+        '''
+
+        assert (0 < global_id) and (global_id < self.nSkewersTotal)
+
+        face_id = int(global_id // self.nSkewersLocal)
+        face_joffset = int( (face_id % self.nFaces_j) * self.nj_local)
+        face_koffset = int( (face_id // self.nFaces_j) * self.nk_local)
+
+        skewfacehead = ChollaSkewerFaceHead(face_id, face_joffset, face_koffset)
+
+        return skewfacehead
+
+    def get_localfacehead_from_localid(self, local_id):
+        '''
+        Return the ChollaSkewerLocalFaceHead object corresponding to skewer 
+            local id
+            Local skewers are tiled first along k-axis, then j-axis
+
+        Args:
+            local_id (int): id of the local skewer
+        Return:
+            skewlocalhead (ChollaSkewerLocalFaceHead): LocalHead for this skewer
+        '''
+
+        assert (0 <= local_id) and (local_id < self.nSkewersLocal)
+
+        local_joffset = int( (local_id % self.nSkewerslocal_j) )
+        local_koffset = int( (local_id // self.nSkewerslocal_j) )
+
+        skewlocalhead = ChollaSkewerLocalFaceHead(local_id, local_joffset,
+                                                  local_koffset)
+
+        return skewlocalhead
+
+    def get_localfacehead_from_globalid(self, global_id):
+        '''
+        Return the ChollaSkewerLocalFaceHead object corresponding to skewer 
+            global id
+            Local skewers are tiled first along k-axis, then j-axis
+
+        Args:
+            global_id (int): id of the global skewer
+        Return:
+            skewlocalhead (ChollaSkewerLocalFaceHead): LocalHead for this global skewer
+        '''
+
+        assert (0 < global_id) and (global_id < self.nSkewersTotal)
+
+        local_id = int(global_id % self.nSkewersLocal)
+        local_joffset = int( (local_id % self.nSkewerslocal_j) )
+        local_koffset = int( (local_id // self.nSkewerslocal_j) )
+
+        skewlocalhead = ChollaSkewerLocalFaceHead(local_id, local_joffset,
+                                                  local_koffset)
+
+        return skewlocalhead
+
+    def get_globalhead(self, global_id):
+        '''
+        Return the ChollaSkewerGlobalHead object corresponding to skewer global id
+
+        Args:
+            global_id (int): id of the global skewer
+        Return:
+            skewglobalhead (ChollaSkewerGlobalHead): GlobalHead for this global 
+                skewer id
+        '''
+
+        assert (0 < global_id) and (global_id < self.nSkewersTotal)
+
+        facehead = self.get_facehead_from_globalid(global_id)
+        localhead = self.get_localfacehead_from_globalid(global_id)
+
+        skewglobalhead = ChollaSkewerGlobalHead(global_id, facehead, localhead,
+                                                self.nlos_global, self.nlos_proc)
+
+        return skewglobalhead
+
+
+
 class ChollaSnapCosmologyHead:
     '''
     Cholla Snapshot Cosmology header object
@@ -444,31 +692,38 @@ def main():
     '''
 
 
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    size = comm.Get_size()
+    # comm = MPI.COMM_WORLD
+    # rank = comm.Get_rank()
+    # size = comm.Get_size()
 
-    rank_idstr = f"Rank {rank:.0f}"
+    # rank_idstr = f"Rank {rank:.0f}"
 
-    if rank == 0:
-        # Create parser 
-        parser = create_parser()
-        # Save args
-        args = parser.parse_args()
-        if args.verbose:
-            print(f"--- We are looking at data file : {args.datadirname} ---")
-            print(f"--- {rank_idstr} : Args parsed and created ! ---")
-    else:
-        args = None
+    # if rank == 0:
+    #     # Create parser 
+    #     parser = create_parser()
+    #     # Save args
+    #     args = parser.parse_args()
+    #     if args.verbose:
+    #         print(f"--- We are looking at data file : {args.datadirname} ---")
+    #         print(f"--- {rank_idstr} : Args parsed and created ! ---")
+    # else:
+    #     args = None
 
 
-    # Give args to all ranks
-    args = comm.bcast(args, root=0)
+    # # Give args to all ranks
+    # args = comm.bcast(args, root=0)
 
-    if args.verbose and rank == 0:
-        print(f"{rank_idstr} : Using {size:.0f} processes !")
-        print(f"--- {rank_idstr} : Args have been broadcasted! ---")
+    # if args.verbose and rank == 0:
+    #     print(f"{rank_idstr} : Using {size:.0f} processes !")
+    #     print(f"--- {rank_idstr} : Args have been broadcasted! ---")
 
+    parser = create_parser()
+    #     # Save args
+    args = parser.parse_args()
+    assert args.xskewers or args.yskewers or args.zskewers
+
+    # I get overwhelmed and can only do one at a time, pls be kind
+    assert (args.xskewers + args.yskewers + args.zskewers) == 1
 
 
     # define where file name will be placed
@@ -501,7 +756,8 @@ def main():
     domainarr_key = 'domain'
     dimsarr_key = 'dims'
 
-    with h5py.File(data_initinfo_fPath, 'r', driver='mpio', comm=comm) as fObj:
+    # with h5py.File(data_initinfo_fPath, 'r', driver='mpio', comm=comm) as fObj:
+    with h5py.File(data_initinfo_fPath, 'r') as fObj:
         nprocs_arr = fObj.attrs.get(nprocsarr_key)
         bounds = fObj.attrs.get(boundsarr_key)
         domain = fObj.attrs.get(domainarr_key)
@@ -520,21 +776,37 @@ def main():
 
     nprocs_tot = np.prod(nprocs_arr)
 
-    # create cosmology and snapshot header
-    chCosmoHead = ChollaCosmologyLmtHead(OmegaM, OmegaL, H0)
+    if args.yskewers:
+        skew_axis = 1
+    elif args.zskewers:
+        skew_axis = 2
+    else:
+        skew_axis = 0
 
-    scale_factor = 1. / (1. + redshift)
-    snapCosmoHead = ChollaSnapCosmologyHead(scale_factor, chCosmoHead)
+    nlos_proc = nprocs_arr[skew_axis]
+    nlos = ni_arr[skew_axis]
+    if (skew_axis == 1):
+        nj = ni_arr[0]
+        nk = ni_arr[2]
+        nj_proc = nprocs_arr[0]
+        nk_proc = nprocs_arr[2]
+    elif (skew_axis == 2):
+        nj = ni_arr[0]
+        nk = ni_arr[1]
+        nj_proc = nprocs_arr[0]
+        nk_proc = nprocs_arr[1]
+    else:
+        nj = ni_arr[1]
+        nk = ni_arr[2]
+        nj_proc = nprocs_arr[1]
+        nk_proc = nprocs_arr[2]
 
-    ni_proc = nprocs_arr[0]
-    nj_proc = nprocs_arr[1]
-    nk_proc = nprocs_arr[2]
 
-    ni = ni_arr[0]
-    nj = ni_arr[1]
-    nk = ni_arr[2]
+    assert not (nlos % nlos_proc)
+    assert not (nj % nj_proc)
+    assert not (nk % nk_proc)
 
-    ni_perproc = ni / ni_proc
+    ni_perproc = nlos / nlos_proc
     nj_perproc = nj / nj_proc
     nk_perproc = nk / nk_proc
 
@@ -544,27 +816,36 @@ def main():
 
 
     # create a Grid object
-    chGrid = ChollaGrid(nprocs_tot, nx, ny, nz,
+    chGrid = ChollaGrid(nprocs_tot, ni_arr[0], ni_arr[1], ni_arr[2],
                         bounds[0], bounds[1], bounds[2],
                         domain[0], domain[1], domain[2])
 
     seed = 1337
 
-    # focus on j,k face
-    jkface_ID_arr = np.arange(nj_proc * nk_proc)
-    jkface_IDs_rank = np.argwhere((jkface_ID_arr % size) == rank).flatten()
+    SkewAnalysis = ChollaSkewerAnalysisHead(nlos,nj,nk,
+                                            nlos_proc, nj_proc, nk_proc)
 
-    print(rank, jkface_IDs_rank)
-    for jkface_ID in jkface_IDs_rank:
-        i,j,k = 0, nj_perproc * (jkface_ID // nj_proc), nk_perproc * (jkface_ID % nj_proc)
+    # # focus on j,k face
+    # jkface_ID_arr = np.arange(nj_proc * nk_proc)
+    # jkface_IDs_rank = np.argwhere((jkface_ID_arr % size) == rank).flatten()
 
-        for ni_proc_curr in range(ni_proc):
-            i_curr = ni_proc_curr * ni_perproc
-            boxHead = chGrid.get_BoxHead_ijk(i_curr,j,k)
-            print(boxHead.offset, boxHead.local_dims)
+    # print(rank, jkface_IDs_rank)
+    # for jkface_ID in jkface_IDs_rank:
+    #     i,j,k = 0, nj_perproc * (jkface_ID // nj_proc), nk_perproc * (jkface_ID % nj_proc)
+
+    #     for ni_proc_curr in range(ni_proc):
+    #         i_curr = ni_proc_curr * ni_perproc
+    #         boxHead = chGrid.get_BoxHead_ijk(i_curr,j,k)
+    #         print(boxHead.offset, boxHead.local_dims)
 
 
-    print(rank)
+
+    # create cosmology and snapshot header
+    chCosmoHead = ChollaCosmologyLmtHead(OmegaM, OmegaL, H0)
+
+    scale_factor = 1. / (1. + redshift)
+    snapCosmoHead = ChollaSnapCosmologyHead(scale_factor, chCosmoHead)
+    # print(rank)
 
 if __name__=="__main__":
     main()
