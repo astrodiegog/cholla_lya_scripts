@@ -82,6 +82,9 @@ def create_parser():
 
     parser.add_argument('-o', '--outdir', help='Output directory for analysis files', type=str)
 
+    parser.add_argument('-p', '--peculiarless', help='Whether to exclude peculiar velocities',
+                        action='store_true')
+
     parser.add_argument('-v', '--verbose', help='Print info along the way',
                         action='store_true')
 
@@ -669,6 +672,11 @@ def main():
             calc_string += f'--- Mean local flux + Mean local flux optical depth ---'
             print(calc_string)
 
+        if args.peculiarless:
+            print(f'--- Using optical depth without peculiar velocities ---')
+        else:
+            print(f'--- Using optical depth with peculiar velocities ---')
+
     # ensure number of quantiles is reasonable
     assert args.nquantiles > 0
 
@@ -677,8 +685,12 @@ def main():
     assert args.optdepthupp > args.optdepthlow
 
     # make sure required keys are there
-    tau_local_key = "taucalc_nopec_local"
-    tau_eff_key = "taucalc_nopec_eff"
+    if args.peculiarless:
+        tau_local_key = "taucalc_nopec_local"
+        tau_eff_key = "taucalc_nopec_eff"
+    else:
+        tau_local_key = "taucalc_local"
+        tau_eff_key = "taucalc_eff"
     req_keys = [tau_local_key, tau_eff_key]
 
     if args.verbose:
