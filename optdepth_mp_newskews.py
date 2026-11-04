@@ -851,7 +851,8 @@ def taucalc(Skewers, skewCosmoCalc, precision=np.float64, verbose=False, nopec=F
     Returns:
         ...
     '''
-
+    optdepth_MAX = np.log(np.finfo(np.float64).max)
+    flux_FLOOR = np.exp(-1. * optdepth_MAX)
 
     if nopec:
         taucalc_bool_key = 'taucalc_nopec_bool'
@@ -893,6 +894,7 @@ def taucalc(Skewers, skewCosmoCalc, precision=np.float64, verbose=False, nopec=F
             for skewerID_local, taus_skew in enumerate(res):
                 fluxes = np.exp(-1. * taus_skew)
                 meanF = np.mean(fluxes)
+                meanF = np.max([meanF, flux_FLOOR])
                 skewerID = skewerIDs_2load[skewerID_local]
                 fObj[taucalc_bool_key][skewerID] = True
                 fObj[taucalc_eff_key][skewerID] = -1. * np.log(meanF)

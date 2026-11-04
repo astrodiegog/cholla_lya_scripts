@@ -699,6 +699,30 @@ def main():
 
     if args.verbose:
         print(f"--- Calculating statistics of optical depth / flux ---")
+    optdepth_MAX = np.log(np.finfo(np.float64).max)
+    flux_FLOOR = np.exp(-1. * optdepth_MAX)
+    masklocal_above_MAX_optdepth = tau_loc_tot > optdepth_MAX
+    maskeff_above_MAX_optdepth = tau_eff_tot > optdepth_MAX
+    nlocal_above_MAX_optdepth = np.sum(masklocal_above_MAX_optdepth)
+    neff_above_MAX_optdepth = np.sum(maskeff_above_MAX_optdepth)
+    if nlocal_above_MAX_optdepth == tau_loc_tot.size:
+        print(f"--- All local optical depth are above the max optical depth of {optdepth_MAX:.4e} ---")
+        print(f"--- Unable to calculate ANY relative differences of transmitted flux. Exiting... ---")
+        exit
+    if neff_above_MAX_optdepth == tau_eff_tot.size:
+        print(f"--- All effective optical depth are above the max optical depth of {optdepth_MAX:.4e} ---")
+        print(f"--- Unable to calculate ANY relative differences of transmitted flux. Exiting... ---")
+        exit
+
+    tau_loc_tot[masklocal_above_MAX_optdepth] = optdepth_MAX
+    tau_eff_tot[maskeff_above_MAX_optdepth] = optdepth_MAX
+    if args.verbose:
+        if nloc_above_MAX_optdepth>0:
+            print(f"--- Setting {nlocal_above_MAX_optdepth:.0f} local optical depths to max of {optdepth_MAX:.4e} ---")
+
+        if neff_above_MAX_optdepth>0:
+            print(f"--- Setting {neff_above_MAX_optdepth:.0f}  optical depths to max of {optdepth_MAX:.4e} ---")
+
     fluxes_eff = np.exp(-1. * tau_eff_tot)
     mean_flux_eff = np.mean(fluxes_eff)
     low_flux_eff = np.percentile(fluxes_eff, 16)
