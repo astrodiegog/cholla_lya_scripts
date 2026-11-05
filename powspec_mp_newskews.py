@@ -705,19 +705,24 @@ def main():
     maskeff_above_MAX_optdepth = tau_eff_tot > optdepth_MAX
     nlocal_above_MAX_optdepth = np.sum(masklocal_above_MAX_optdepth)
     neff_above_MAX_optdepth = np.sum(maskeff_above_MAX_optdepth)
-    if nlocal_above_MAX_optdepth == tau_loc_tot.size:
+
+    all_above_MAX_local = nlocal_above_MAX_optdepth == tau_loc_tot.size
+    all_above_MAX_eff = neff_above_MAX_optdepth == tau_eff_tot.size
+    good2FFT = not(all_above_MAX_local or all_above_MAX_eff)
+
+    if all_above_MAX_local:
         print(f"--- All local optical depth are above the max optical depth of {optdepth_MAX:.4e} ---")
-        print(f"--- Unable to calculate ANY relative differences of transmitted flux. Exiting... ---")
-        exit
-    if neff_above_MAX_optdepth == tau_eff_tot.size:
+    if all_above_MAX_eff:
         print(f"--- All effective optical depth are above the max optical depth of {optdepth_MAX:.4e} ---")
-        print(f"--- Unable to calculate ANY relative differences of transmitted flux. Exiting... ---")
-        exit
+
+    if all_above_MAX_local or all_above_MAX_eff:
+        print(f"--- Unable to calculate ANY relative differences of transmitted flux ---")
+        print(f"--- Setting flux power spectra to first mode one and all other modes to zero ---")
 
     tau_loc_tot[masklocal_above_MAX_optdepth] = optdepth_MAX
     tau_eff_tot[maskeff_above_MAX_optdepth] = optdepth_MAX
     if args.verbose:
-        if nloc_above_MAX_optdepth>0:
+        if nlocal_above_MAX_optdepth>0:
             print(f"--- Setting {nlocal_above_MAX_optdepth:.0f} local optical depths to max of {optdepth_MAX:.4e} ---")
 
         if neff_above_MAX_optdepth>0:
@@ -729,10 +734,10 @@ def main():
     med_flux_eff = np.percentile(fluxes_eff, 50)
     hi_flux_eff = np.percentile(fluxes_eff, 84)
 
-    tau_mean_flux_eff = np.log(mean_flux_eff)
-    tau_low_flux_eff = np.log(low_flux_eff)
-    tau_med_flux_eff = np.log(med_flux_eff)
-    tau_hi_flux_eff = np.log(hi_flux_eff)
+    tau_mean_flux_eff = -1. * np.log(mean_flux_eff)
+    tau_low_flux_eff = -1. * np.log(low_flux_eff)
+    tau_med_flux_eff = -1. * np.log(med_flux_eff)
+    tau_hi_flux_eff = -1. * np.log(hi_flux_eff)
 
     mean_tau_eff = np.mean(tau_eff_tot)
     low_tau_eff = np.percentile(tau_eff_tot, 16)
@@ -747,12 +752,15 @@ def main():
     PF_k_tot = np.zeros( (nSkews_tot, chFPSHead.n_fft), dtype=precision)
 
 
-    with Pool(processes=args.nprocs) as pool:
-        chunksize = 25
-        res = pool.imap(chFPSHead.get_flux_power_spectra, tau_loc_tot, chunksize=chunksize) 
+    if good2FFT:
+        with Pool(processes=args.nprocs) as pool:
+            chunksize = 25
+            res = pool.imap(chFPSHead.get_flux_power_spectra, tau_loc_tot, chunksize=chunksize) 
 
-        for skewerID, PF_k_skew in enumerate(res):
-            PF_k_tot[skewerID] = PF_k_skew
+            for skewerID, PF_k_skew in enumerate(res):
+                PF_k_tot[skewerID] = PF_k_skew
+    else:
+        PF_k_tot[:,0] = 1.
 
 
     kvals = chFPSHead.get_kvals_fft(precision)
